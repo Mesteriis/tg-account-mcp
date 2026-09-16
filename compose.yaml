@@ -1,0 +1,59 @@
+services:
+  tg-mcp:
+    build: .
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    environment:
+      TG_MCP_STATE_DIR: /var/lib/tg-mcp
+      TG_MCP_BIND: 0.0.0.0
+      TG_MCP_ALLOWED_HOSTS: "${TG_MCP_DOMAIN:?Set TG_MCP_DOMAIN in .env},${TG_MCP_DOMAIN}:443"
+      TG_MCP_ALLOWED_ORIGINS: "https://${TG_MCP_DOMAIN}"
+    volumes:
+      - tg_state:/var/lib/tg-mcp
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, urllib.error, sys
+          root_ok = False
+          mcp_ok = False
+          try:
+              root_ok = urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).status == 200
+              urllib.request.urlopen('http://127.0.0.1:8000/mcp', timeout=3)
+          except urllib.error.HTTPError as error:
+              mcp_ok = error.code == 401
+          sys.exit(0 if root_ok and mcp_ok else 1)
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      TG_MCP_DOMAIN: "${TG_MCP_DOMAIN:?Set TG_MCP_DOMAIN in .env}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      tg-mcp:
+        condition: service_healthy
+
+volumes:
+  tg_state:
+  caddy_data:
+  caddy_config:

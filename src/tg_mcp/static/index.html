@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>TG MCP · Панель управления</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <div class="brand">
+        <span class="brand-mark"><i class="ph ph-paper-plane-tilt" aria-hidden="true"></i></span>
+        <span><strong>TG MCP</strong><small>Telegram для AI</small></span>
+      </div>
+      <nav class="side-nav" aria-label="Основная навигация">
+        <button class="nav-item active" data-view="overview"><i class="ph ph-house" aria-hidden="true"></i><span>Обзор</span></button>
+        <button class="nav-item" data-view="accounts"><i class="ph ph-user" aria-hidden="true"></i><span>Аккаунты</span><span class="nav-count" id="accountsNavCount">0</span></button>
+        <button class="nav-item" data-view="bots"><i class="ph ph-robot" aria-hidden="true"></i><span>Боты</span><span class="nav-count" id="botsNavCount">0</span></button>
+        <button class="nav-item" data-view="activity"><i class="ph ph-chart-bar" aria-hidden="true"></i><span>Активность</span></button>
+        <button class="nav-item" data-view="access"><i class="ph ph-key" aria-hidden="true"></i><span>Доступ MCP</span></button>
+        <button class="nav-item" data-view="settings"><i class="ph ph-gear" aria-hidden="true"></i><span>Настройки</span></button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="date-card"><i class="ph ph-calendar-blank" aria-hidden="true"></i><span><small>Сегодня</small><strong id="todayLabel">—</strong></span></div>
+        <div class="version"><span class="live-dot"></span>TG MCP v0.2.0</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-button mobile-menu" id="mobileMenu" aria-label="Открыть меню" aria-expanded="false"><i class="ph ph-list" aria-hidden="true"></i></button>
+        <div class="page-heading"><h1 id="pageTitle">Обзор</h1><p id="pageSubtitle">Состояние сервиса, статистика и последние операции</p></div>
+        <div class="top-actions">
+          <div class="service-state"><span class="live-dot"></span><span><strong>Сервис работает</strong><small id="syncLabel">Обновляем данные…</small></span></div>
+          <button class="button primary" id="headerConnect"><i class="ph ph-plus" aria-hidden="true"></i>Подключить аккаунт</button>
+        </div>
+      </header>
+
+      <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+
+      <section class="view active" data-page="overview">
+        <div class="health-grid">
+          <article class="health-card"><span class="metric-icon"><i class="ph ph-link" aria-hidden="true"></i></span><div><small>MCP endpoint</small><strong id="endpointValue">/mcp</strong><span class="status-line success"><span class="live-dot"></span>Доступен</span></div><button class="copy-button" data-copy="endpoint" aria-label="Скопировать MCP endpoint"><i class="ph ph-copy" aria-hidden="true"></i></button></article>
+          <article class="health-card"><span class="metric-icon"><i class="ph ph-users" aria-hidden="true"></i></span><div><small>Пользовательские аккаунты</small><strong><span id="readyAccounts">0</span> подключено</strong><span class="status-line" id="totalAccounts">из 0 настроенных</span></div></article>
+          <article class="health-card"><span class="metric-icon"><i class="ph ph-robot" aria-hidden="true"></i></span><div><small>Боты</small><strong><span id="readyBots">0</span> подключено</strong><span class="status-line" id="totalBots">необязательно</span></div></article>
+          <article class="health-card"><span class="metric-icon"><i class="ph ph-arrows-clockwise" aria-hidden="true"></i></span><div><small>Последнее обновление</small><strong id="lastSync">—</strong><span class="status-line success"><span class="live-dot"></span>Синхронизировано</span></div></article>
+        </div>
+
+        <div class="analytics-grid">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div><h2>Операции</h2><p id="chartPeriodLabel">За последние 14 дней</p></div>
+              <div class="chart-tools">
+                <div class="legend" aria-label="Серии графика"><span><i class="legend-dot blue"></i>Чтение</span><span><i class="legend-dot cyan"></i>Поиск</span><span><i class="legend-dot violet"></i>Отправка</span></div>
+                <div class="segmented" id="rangeSelector"><button data-days="1">24ч</button><button data-days="7">7д</button><button class="active" data-days="14">14д</button><button data-days="30">30д</button></div>
+              </div>
+            </div>
+            <div class="chart-wrap"><canvas id="activityChart" role="img" aria-label="График операций MCP"></canvas><div class="chart-empty" id="chartEmpty" hidden><i class="ph ph-chart-line-up" aria-hidden="true"></i><strong>Статистика появится после первых вызовов</strong><span>Чтение, поиск и отправка будут показаны здесь.</span></div></div>
+          </article>
+
+          <article class="panel usage-panel">
+            <div class="panel-head"><div><h2>Использование</h2><p id="usagePeriod">За последние 14 дней</p></div></div>
+            <div class="usage-list">
+              <div><span class="usage-icon"><i class="ph ph-cube" aria-hidden="true"></i></span><span><small>Всего запросов</small><strong id="requestsTotal">0</strong></span></div>
+              <div><span class="usage-icon"><i class="ph ph-file-text" aria-hidden="true"></i></span><span><small>Операции чтения</small><strong id="readsTotal">0</strong></span></div>
+              <div><span class="usage-icon"><i class="ph ph-paper-plane-tilt" aria-hidden="true"></i></span><span><small>Отправлено сообщений</small><strong id="sendsTotal">0</strong></span></div>
+              <div><span class="usage-icon danger"><i class="ph ph-warning-circle" aria-hidden="true"></i></span><span><small>Доля ошибок</small><strong id="errorRate">0%</strong></span></div>
+            </div>
+            <div class="usage-foot"><span><small>Успешность операций</small><strong id="successRate">100%</strong></span><div class="progress"><span id="successBar"></span></div></div>
+          </article>
+        </div>
+
+        <article class="panel identities-panel">
+          <div class="panel-head"><div><h2>Аккаунты и боты</h2><p>Состояние подключённых идентичностей</p></div><button class="text-button" data-view-link="accounts">Все аккаунты <i class="ph ph-arrow-right" aria-hidden="true"></i></button></div>
+          <div class="identity-strip" id="identityStrip"></div>
+        </article>
+
+        <article class="panel activity-panel">
+          <div class="table-tabs" role="tablist"><button class="active" data-table-tab="history" role="tab">История операций</button><button data-table-tab="usage" role="tab">Использование по аккаунтам</button></div>
+          <div class="table-toolbar" id="historyToolbar">
+            <label class="search"><i class="ph ph-magnifying-glass" aria-hidden="true"></i><input id="historySearch" type="search" placeholder="Поиск по аккаунту, действию или чату"></label>
+            <select id="identityFilter" aria-label="Фильтр по аккаунту"><option value="">Все аккаунты</option></select>
+            <select id="actionFilter" aria-label="Фильтр по действию"><option value="">Все действия</option><option value="read">Чтение</option><option value="search">Поиск</option><option value="send">Отправка</option></select>
+            <select id="statusFilter" aria-label="Фильтр по статусу"><option value="">Все статусы</option><option value="success">Успешно</option><option value="error">Ошибка</option></select>
+          </div>
+          <div class="table-wrap" id="historyTableWrap"><table><thead><tr><th>Время</th><th>Аккаунт</th><th>Действие</th><th>Чат</th><th>Статус</th><th>Длительность</th></tr></thead><tbody id="historyRows"></tbody></table><div class="empty-state" id="historyEmpty" hidden><i class="ph ph-clock-counter-clockwise" aria-hidden="true"></i><strong>История пока пуста</strong><span>Операции агентов появятся здесь автоматически.</span></div></div>
+          <div class="table-wrap" id="usageTableWrap" hidden><table><thead><tr><th>Аккаунт</th><th>Всего</th><th>Чтение</th><th>Поиск</th><th>Отправка</th><th>Ошибки</th></tr></thead><tbody id="usageRows"></tbody></table><div class="empty-state" id="usageEmpty" hidden><i class="ph ph-chart-donut" aria-hidden="true"></i><strong>Нет данных по аккаунтам</strong><span>Совершите операцию через MCP с выбранным identity.</span></div></div>
+        </article>
+      </section>
+
+      <section class="view" data-page="accounts" aria-label="Мастер: QR → 2FA → имя аккаунта">
+        <div class="section-head"><div><h2>Пользовательские аккаунты</h2><p>Подключайте Telegram по QR-коду и управляйте доступностью для агентов.</p></div><button class="button primary" id="startAccount"><i class="ph ph-plus" aria-hidden="true"></i>Подключить аккаунт</button></div>
+        <div id="wizard"></div>
+        <div class="cards-grid" id="accounts"></div>
+      </section>
+
+      <section class="view" data-page="bots">
+        <div class="section-head"><div><h2>Telegram-боты</h2><p>Боты подключаются отдельно и остаются полностью опциональными.</p></div></div>
+        <article class="panel form-panel"><form id="botForm" class="form-grid"><label><span>Название</span><input id="botLabel" maxlength="64" placeholder="Например, Помощник AI" required></label><label><span>Токен BotFather</span><input id="botToken" type="password" placeholder="123456:ABC…" required autocomplete="off"></label><button class="button primary" type="submit"><i class="ph ph-plus" aria-hidden="true"></i>Добавить бота</button></form><p class="form-note"><i class="ph ph-shield-check" aria-hidden="true"></i>Токен проверяется до сохранения и никогда не отображается в интерфейсе.</p></article>
+        <div class="cards-grid" id="bots"></div>
+      </section>
+
+      <section class="view" data-page="activity">
+        <div class="section-head"><div><h2>Активность</h2><p>Полная история вызовов MCP без содержимого сообщений и поисковых запросов.</p></div></div>
+        <article class="panel activity-panel standalone" id="activityStandalone"></article>
+      </section>
+
+      <section class="view" data-page="access">
+        <div class="section-head"><div><h2>Доступ MCP</h2><p>Подключение агентов к этому экземпляру сервера.</p></div></div>
+        <div class="settings-grid">
+          <article class="panel setting-card"><span class="large-icon"><i class="ph ph-link" aria-hidden="true"></i></span><div><h3>Streamable HTTP endpoint</h3><p>Используйте этот URL в конфигурации MCP-клиента.</p><div class="copy-field"><code id="endpointFull">—</code><button class="icon-button" data-copy="endpoint" aria-label="Скопировать endpoint"><i class="ph ph-copy" aria-hidden="true"></i></button></div></div></article>
+          <article class="panel setting-card"><span class="large-icon"><i class="ph ph-key" aria-hidden="true"></i></span><div><h3>Bearer-токен</h3><p>Введите общий MCP-токен для удалённого сервера. Он хранится только в памяти этой вкладки.</p><div class="token-form"><input id="token" type="password" placeholder="Bearer token" autocomplete="off"><button class="button primary" id="saveToken">Применить</button></div></div></article>
+        </div>
+      </section>
+
+      <section class="view" data-page="settings">
+        <div class="section-head"><div><h2>Настройки</h2><p>Информация о работе локального экземпляра.</p></div></div>
+        <div class="settings-grid"><article class="panel setting-card"><span class="large-icon"><i class="ph ph-database" aria-hidden="true"></i></span><div><h3>Хранение данных</h3><p>Сессии и история операций хранятся в приватном каталоге сервера с правами 0700/0600.</p></div></article><article class="panel setting-card"><span class="large-icon"><i class="ph ph-eye-slash" aria-hidden="true"></i></span><div><h3>Приватность аналитики</h3><p>Записываются только тип операции, identity, chat ID, статус и длительность. Тексты сообщений и запросы не сохраняются.</p></div></article></div>
+      </section>
+    </main>
+  </div>
+  <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

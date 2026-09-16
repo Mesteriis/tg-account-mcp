@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused capability or behavior change
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: agent-task
+    attributes:
+      label: Agent task
+      description: What should an MCP client or agent be able to accomplish?
+    validations:
+      required: true
+  - type: textarea
+    id: current-limit
+    attributes:
+      label: Current limitation
+      description: Why do the existing tools or setup flow not solve it?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe inputs, outputs, permissions, and failure behavior if known.
+    validations:
+      required: true
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: The proposal keeps account or bot selection explicit.
+          required: true
+        - label: The proposal does not require exposing Telegram sessions or credentials to agents.
+          required: true

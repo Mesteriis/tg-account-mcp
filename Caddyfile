@@ -1,0 +1,25 @@
+{
+	admin off
+}
+
+{$TG_MCP_DOMAIN} {
+	@mcp path /mcp
+	handle @mcp {
+		request_body {
+			max_size 64KB
+		}
+		reverse_proxy tg-mcp:8000 {
+			flush_interval -1
+		}
+	}
+	@setup path / /setup/api/*
+	handle @setup {
+		request_body {
+			max_size 8KB
+		}
+		reverse_proxy tg-mcp:8000
+	}
+	handle {
+		respond 404
+	}
+}

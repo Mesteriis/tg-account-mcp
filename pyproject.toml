@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tg-account-mcp"
+version = "0.4.0"
+description = "Self-hosted multi-account Telegram MCP server for AI agents"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["ai-agents", "mcp", "model-context-protocol", "telegram", "telethon"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Web Environment",
+  "Framework :: AsyncIO",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Chat",
+  "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+]
+dependencies = [
+  "mcp==2.2.0",
+  "telethon==1.45.0",
+  "httpx==0.28.1",
+  "pydantic>=2.13.5,<3",
+  "qrcode==8.2",
+  "starlette>=1.6,<2",
+  "uvicorn>=0.53,<1",
+]
+
+[project.scripts]
+tg-mcp = "tg_mcp.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Mesteriis/tg-account-mcp"
+Repository = "https://github.com/Mesteriis/tg-account-mcp"
+Issues = "https://github.com/Mesteriis/tg-account-mcp/issues"
+Changelog = "https://github.com/Mesteriis/tg-account-mcp/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = ["pytest>=9.1,<10", "pytest-asyncio>=1.4,<2", "ruff>=0.16,<1"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tg_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]

@@ -1,12 +1,12 @@
 FROM ghcr.io/astral-sh/uv:0.12.11 AS uv
-FROM python:3.12-slim AS build
+FROM python:3.14-slim AS build
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md LICENSE ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-editable --no-cache
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 LABEL org.opencontainers.image.title="TG multi-account MCP" \
     org.opencontainers.image.description="Self-hosted multi-account Telegram MCP server for AI agents" \
     org.opencontainers.image.source="https://github.com/Mesteriis/tg-account-mcp" \

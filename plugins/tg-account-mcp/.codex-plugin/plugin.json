@@ -1,0 +1,39 @@
+{
+  "name": "tg-account-mcp",
+  "version": "0.1.0",
+  "description": "Connect Codex to a self-hosted multi-account Telegram MCP server.",
+  "author": {
+    "name": "Mesteriis",
+    "url": "https://github.com/Mesteriis"
+  },
+  "homepage": "https://github.com/Mesteriis/tg-account-mcp#codex-plugin",
+  "repository": "https://github.com/Mesteriis/tg-account-mcp",
+  "license": "Apache-2.0",
+  "keywords": [
+    "telegram",
+    "mcp",
+    "agents",
+    "multi-account"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "TG Account MCP",
+    "shortDescription": "Work with Telegram accounts and bots from Codex.",
+    "longDescription": "Connects Codex to TG Account MCP and provides reliable workflows for finding chats, reading folders and history, handling attachments, drafting replies, and sending through an explicitly selected Telegram identity.",
+    "developerName": "Mesteriis",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "Multi-account"
+    ],
+    "websiteURL": "https://github.com/Mesteriis/tg-account-mcp",
+    "defaultPrompt": [
+      "Summarize today's messages in one Telegram folder.",
+      "Find a Telegram chat and recap a date range.",
+      "Draft a Telegram reply for my review."
+    ],
+    "brandColor": "#229ED9"
+  },
+  "mcpServers": "./.mcp.json"
+}

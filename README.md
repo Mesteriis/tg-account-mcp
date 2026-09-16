@@ -100,6 +100,20 @@ agent can call `list_folders`, then `get_folder_messages` with matching `date_fr
 values and an IANA timezone such as `Europe/Madrid`, provided that processing this content is
 permitted under the consent requirements below.
 
+## Codex plugin
+
+This repository also ships a Codex plugin with the MCP connection and a workflow skill for chat
+resolution, folder summaries, complete pagination, attachments, drafts, and idempotent sending.
+
+```sh
+export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
+codex plugin marketplace add Mesteriis/tg-account-mcp --ref main
+codex plugin add tg-account-mcp@tg-account-mcp
+```
+
+The bundled endpoint is `http://127.0.0.1:8765/mcp`. See the
+[Codex plugin guide](docs/CODEX_PLUGIN.md) for remote-server setup and example prompts.
+
 ## Responsible use and Telegram terms
 
 Operators must comply with the [Telegram API Terms](https://core.telegram.org/api/terms) and

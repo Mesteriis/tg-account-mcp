@@ -5,6 +5,12 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Installable Codex plugin with a local MCP connection, repository marketplace metadata, and
+  agent workflows for multi-account chat discovery, folder review, attachments, drafts, and
+  idempotent sending.
+
 ## [0.4.0] - 2026-09-16
 
 ### Added

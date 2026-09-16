@@ -34,6 +34,15 @@ TG_MCP_DOMAIN=mcp.example.test docker compose config --quiet
 docker build -t tg-account-mcp:local .
 ```
 
+Changes under `plugins/tg-account-mcp` must also pass the bundled Codex validators:
+
+```sh
+python3 "$HOME/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py" \
+  plugins/tg-account-mcp
+python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" \
+  plugins/tg-account-mcp/skills/telegram-agent-workflows
+```
+
 ## Pull requests
 
 Describe the user-visible behavior, the failure mode being addressed, and the checks you ran.

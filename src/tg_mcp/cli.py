@@ -16,6 +16,7 @@ import uvicorn
 from pydantic import ValidationError
 
 from tg_mcp.bot import BotGateway
+from tg_mcp.bridge import run_bridge
 from tg_mcp.config import Credentials, Settings
 from tg_mcp.errors import GatewayError, LocalError, telegram_errors
 from tg_mcp.manager import IdentityManager
@@ -120,12 +121,16 @@ def main(argv: list[str] | None = None) -> int:
         ("rotate-token", "Replace the MCP access token (stop the service first)"),
         ("show-token", "Print the MCP token for secure client provisioning"),
         ("serve", "Run the MCP HTTP service with one worker"),
+        ("bridge", "Discover a service and proxy it over MCP stdio"),
     ):
         commands.add_parser(command, help=help_text)
     args = parser.parse_args(argv)
     previous_umask = os.umask(0o077)
     configure_logging()
     try:
+        if args.command == "bridge":
+            asyncio.run(run_bridge())
+            return 0
         store = StateStore(args.state_dir)
         # Read-only token retrieval is safe while the server owns the session lock.
         if args.command == "show-token":

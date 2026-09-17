@@ -21,11 +21,17 @@ def test_codex_plugin_marketplace_points_to_valid_plugin() -> None:
     assert (source / manifest["skills"]).is_dir()
 
 
-def test_codex_plugin_uses_environment_for_mcp_token() -> None:
+def test_codex_plugin_uses_discovery_bridge_without_embedding_a_token() -> None:
     config = load_json(PLUGIN_ROOT / ".mcp.json")
     server = config["mcpServers"]["tg-account"]
 
-    assert server["type"] == "http"
-    assert server["url"] == "http://127.0.0.1:8765/mcp"
-    assert server["bearer_token_env_var"] == "TG_MCP_TOKEN"
+    assert server["command"] == "uvx"
+    assert server["args"] == [
+        "--from",
+        "tg-account-mcp==0.5.0",
+        "tg-mcp",
+        "bridge",
+    ]
+    assert "TG_MCP_TOKEN" in server["env_vars"]
     assert "bearer_token" not in server
+    assert "url" not in server

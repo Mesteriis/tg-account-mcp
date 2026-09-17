@@ -49,9 +49,9 @@ URL Streamable HTTP — `/mcp`; каждый запрос требует Bearer-
 
 ### Плагин для Codex
 
-В репозитории есть плагин Codex с готовым подключением к MCP и инструкциями для агента: поиск
-диалогов, чтение папок с полной пагинацией, работа с вложениями, черновики и безопасные повторные
-отправки.
+В репозитории есть плагин Codex с автоматическим защищённым поиском MCP-сервиса и инструкциями для
+агента: поиск диалогов, чтение папок с полной пагинацией, работа с вложениями, черновики и
+безопасные повторные отправки.
 
 ```sh
 export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
@@ -59,8 +59,11 @@ codex plugin marketplace add Mesteriis/tg-account-mcp --ref main
 codex plugin add tg-account-mcp@tg-account-mcp
 ```
 
-Встроенный endpoint — `http://127.0.0.1:8765/mcp`. Настройка удалённого сервера и примеры запросов
-описаны в [руководстве по плагину Codex](docs/CODEX_PLUGIN.md).
+Плагин отправляет защищённый запрос поиска на локальную машину и в локальную сеть. Запросы и
+ответы discovery заверены с помощью MCP-токена, но сам токен не рассылается и не передаётся до
+проверки найденного endpoint. Переменная `TG_MCP_URL` отключает поиск и задаёт конкретный HTTPS
+endpoint. Настройка сервера и примеры запросов описаны в
+[руководстве по плагину Codex](docs/CODEX_PLUGIN.md).
 
 | Инструмент | Действие |
 | --- | --- |
@@ -189,7 +192,10 @@ docker compose up -d tg-mcp
 
 Старый токен и подписанные им курсоры перестанут работать. При утечке дополнительно отзовите пользовательские сессии в Telegram Devices и замените bot token через BotFather.
 
-Переменные сервера: `TG_MCP_BIND`, `TG_MCP_PORT`, `TG_MCP_STATE_DIR`, `TG_MCP_ALLOWED_HOSTS` и `TG_MCP_ALLOWED_ORIGINS`. Allowlist задаются через запятую, wildcard запрещён. Для публичного доступа используйте HTTPS-прокси из Compose.
+Переменные сервера: `TG_MCP_BIND`, `TG_MCP_PORT`, `TG_MCP_STATE_DIR`, `TG_MCP_ALLOWED_HOSTS`,
+`TG_MCP_ALLOWED_ORIGINS`, `TG_MCP_DISCOVERY`, `TG_MCP_DISCOVERY_PORT` и
+`TG_MCP_DISCOVERY_URL`. Allowlist задаются через запятую, wildcard запрещён. Для публичного
+доступа используйте HTTPS-прокси из Compose.
 
 ## Ограничения и проверка
 

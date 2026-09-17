@@ -45,8 +45,8 @@ Update `pyproject.toml`, `src/tg_mcp/__init__.py`, and `CHANGELOG.md` to the sam
 checks locally, commit the change, then create a matching tag:
 
 ```sh
-git tag -a v0.4.0 -m "v0.4.0"
-git push origin v0.4.0
+git tag -a v0.5.0 -m "v0.5.0"
+git push origin v0.5.0
 ```
 
 The release workflow verifies that the tag matches `pyproject.toml`, runs lint and tests, builds

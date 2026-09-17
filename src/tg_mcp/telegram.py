@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from telethon import TelegramClient, events, functions, types, utils
 
+from tg_mcp import __version__
 from tg_mcp.config import Credentials
 from tg_mcp.cursors import Cursors, query_context
 from tg_mcp.errors import GatewayError, telegram_errors, validate_text
@@ -78,7 +79,7 @@ def make_client(
         flood_sleep_threshold=0,
         raise_last_call_error=True,
         device_model="Telegram MCP Server",
-        app_version="0.4.0",
+        app_version=__version__,
     )
 
 

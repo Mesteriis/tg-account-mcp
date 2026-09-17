@@ -5,6 +5,8 @@ TG multi-account MCP is one asynchronous Python process with four external bound
 ```mermaid
 flowchart LR
     A[MCP clients] -->|Streamable HTTP + Bearer token| S[Starlette / MCP server]
+    C[Codex plugin] -->|stdio bridge| A
+    C -. HMAC-authenticated UDP discovery .-> S
     B[Setup browser] -->|HTTPS + Bearer token| W[Setup API]
     S --> M[Identity manager]
     W --> M
@@ -23,6 +25,10 @@ flowchart LR
 - `bot.py` contains the small Telegram Bot API boundary.
 - `storage.py` validates permissions and performs atomic writes in the state directory.
 - `access.py` resolves the main token and scoped agent-token permissions.
+- `discovery.py` advertises an authenticated endpoint on the local network without broadcasting
+  Bearer tokens.
+- `bridge.py` discovers or uses an explicit endpoint and proxies its MCP tools over stdio for
+  Codex.
 - `telemetry.py` retains bounded operation metadata for the dashboard.
 
 ## State
@@ -41,6 +47,11 @@ Telegram content is untrusted input. It is returned as data and must not be inte
 instruction by an agent. Tool arguments are validated before reaching Telegram, and upstream
 exception text is not returned to clients. Authentication is checked for every setup and MCP
 request; tool-level authorization then checks scope, identity, and chat restrictions.
+
+Local-network discovery uses the SHA-256 digest already used for token lookup as an HMAC key. An
+endpoint is accepted only when its response proves knowledge of the same master or active scoped
+token. Plain HTTP discovery responses are limited to private, loopback, and link-local addresses.
+An explicit public endpoint must use HTTPS.
 
 The dashboard uses bundled static assets and a restrictive Content Security Policy. In the
 Compose deployment, Caddy is the public network boundary and the Python service remains on the

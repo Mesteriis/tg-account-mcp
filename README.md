@@ -102,8 +102,9 @@ permitted under the consent requirements below.
 
 ## Codex plugin
 
-This repository also ships a Codex plugin with the MCP connection and a workflow skill for chat
-resolution, folder summaries, complete pagination, attachments, drafts, and idempotent sending.
+This repository also ships a Codex plugin with authenticated automatic service discovery and a
+workflow skill for chat resolution, folder summaries, complete pagination, attachments, drafts,
+and idempotent sending.
 
 ```sh
 export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
@@ -111,8 +112,11 @@ codex plugin marketplace add Mesteriis/tg-account-mcp --ref main
 codex plugin add tg-account-mcp@tg-account-mcp
 ```
 
-The bundled endpoint is `http://127.0.0.1:8765/mcp`. See the
-[Codex plugin guide](docs/CODEX_PLUGIN.md) for remote-server setup and example prompts.
+The plugin sends an authenticated discovery request to the local machine and network. Discovery
+requests and replies are authenticated using the configured MCP token; the token itself is never
+broadcast or sent before the discovered endpoint is authenticated. Set `TG_MCP_URL` to skip
+discovery and use a specific HTTPS endpoint. See the
+[Codex plugin guide](docs/CODEX_PLUGIN.md) for server setup and example prompts.
 
 ## Responsible use and Telegram terms
 
@@ -157,6 +161,10 @@ docker compose up -d
 Open `https://your-domain.example/#token=<MCP_TOKEN>` for initial setup. The URL fragment is not
 sent to the server; the page removes it from the address bar and keeps the token in tab memory.
 Agents connect to `https://your-domain.example/mcp`.
+
+Compose also publishes authenticated UDP discovery on port `38475` and advertises that HTTPS
+endpoint to clients on the same private network. Change `TG_MCP_DISCOVERY_PORT` on both sides when
+needed, or set `TG_MCP_DISCOVERY=false` if local discovery is not part of the deployment.
 
 Caddy terminates HTTPS and does not expose the application port publicly. The application
 container runs as an unprivileged user with a read-only root filesystem. Run one application

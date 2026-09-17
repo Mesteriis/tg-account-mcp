@@ -1,12 +1,25 @@
 import pytest
 
 from tg_mcp.bridge import _discovery_port, _token, select_endpoint
+from tg_mcp.config import Credentials
+from tg_mcp.storage import StateStore
 
 
 def test_bridge_requires_token(monkeypatch) -> None:
     monkeypatch.delenv("TG_MCP_TOKEN", raising=False)
+    monkeypatch.setenv("TG_MCP_STATE_DIR", "/path/that/does/not/exist")
     with pytest.raises(ValueError, match="TG_MCP_TOKEN"):
         _token()
+
+
+def test_bridge_reads_token_from_private_local_state(tmp_path, monkeypatch) -> None:
+    state_dir = tmp_path / "private"
+    store = StateStore(state_dir)
+    store.save(Credentials(api_id=12345, api_hash="a" * 32, mcp_token="x" * 43))
+    monkeypatch.delenv("TG_MCP_TOKEN", raising=False)
+    monkeypatch.setenv("TG_MCP_STATE_DIR", str(state_dir))
+
+    assert _token() == "x" * 43
 
 
 def test_bridge_validates_discovery_port(monkeypatch) -> None:

@@ -54,7 +54,6 @@ URL Streamable HTTP — `/mcp`; каждый запрос требует Bearer-
 безопасные повторные отправки.
 
 ```sh
-export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
 codex plugin marketplace add Mesteriis/tg-account-mcp --ref main
 codex plugin add tg-account-mcp@tg-account-mcp
 ```
@@ -64,6 +63,10 @@ codex plugin add tg-account-mcp@tg-account-mcp
 проверки найденного endpoint. Переменная `TG_MCP_URL` отключает поиск и задаёт конкретный HTTPS
 endpoint. Настройка сервера и примеры запросов описаны в
 [руководстве по плагину Codex](docs/CODEX_PLUGIN.md).
+
+Если Codex и сервис запущены на одном компьютере от одного пользователя ОС, bridge автоматически
+читает токен из защищённого локального state. Для сервиса на другом компьютере передайте
+`TG_MCP_TOKEN` процессу Codex.
 
 | Инструмент | Действие |
 | --- | --- |

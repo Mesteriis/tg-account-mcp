@@ -28,10 +28,11 @@ def test_codex_plugin_uses_discovery_bridge_without_embedding_a_token() -> None:
     assert server["command"] == "uvx"
     assert server["args"] == [
         "--from",
-        "tg-account-mcp==0.5.0",
+        "tg-account-mcp==0.5.1",
         "tg-mcp",
         "bridge",
     ]
     assert "TG_MCP_TOKEN" in server["env_vars"]
+    assert "TG_MCP_STATE_DIR" in server["env_vars"]
     assert "bearer_token" not in server
     assert "url" not in server

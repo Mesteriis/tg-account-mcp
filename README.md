@@ -107,7 +107,6 @@ workflow skill for chat resolution, folder summaries, complete pagination, attac
 and idempotent sending.
 
 ```sh
-export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
 codex plugin marketplace add Mesteriis/tg-account-mcp --ref main
 codex plugin add tg-account-mcp@tg-account-mcp
 ```
@@ -117,6 +116,10 @@ requests and replies are authenticated using the configured MCP token; the token
 broadcast or sent before the discovered endpoint is authenticated. Set `TG_MCP_URL` to skip
 discovery and use a specific HTTPS endpoint. See the
 [Codex plugin guide](docs/CODEX_PLUGIN.md) for server setup and example prompts.
+
+When Codex and the service run as the same OS user on one machine, the bridge reads the token from
+the protected local state automatically. For a service on another machine, provide
+`TG_MCP_TOKEN` to the Codex process.
 
 ## Responsible use and Telegram terms
 

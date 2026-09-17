@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from mcp import ClientSession, types
 from mcp.client.streamable_http import streamable_http_client
@@ -13,13 +14,22 @@ from mcp.server.stdio import stdio_server
 from mcp.shared._httpx_utils import create_mcp_http_client
 
 from tg_mcp.discovery import DISCOVERY_PORT, discover_services, validate_endpoint
+from tg_mcp.errors import LocalError
+from tg_mcp.storage import StateStore
 
 
 def _token() -> str:
     value = os.environ.get("TG_MCP_TOKEN", "")
-    if not value:
-        raise ValueError("TG_MCP_TOKEN is required")
-    return value
+    if value:
+        return value
+
+    state_dir = Path(os.environ.get("TG_MCP_STATE_DIR", "~/.local/share/tg-mcp")).expanduser()
+    if not (state_dir / "credentials.json").is_file():
+        raise ValueError("TG_MCP_TOKEN is required when no local TG Account MCP state exists")
+    try:
+        return StateStore(state_dir).load().mcp_token.get_secret_value()
+    except LocalError:
+        raise ValueError("Local TG Account MCP state could not provide a token") from None
 
 
 def _discovery_port() -> int:

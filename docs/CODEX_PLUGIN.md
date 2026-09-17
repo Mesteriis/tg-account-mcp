@@ -11,14 +11,17 @@ Start the server on its plugin default endpoint:
 TG_MCP_PORT=8765 uv run tg-mcp serve
 ```
 
-Make the MCP token available to the environment that starts Codex:
+When the server runs on another machine, make the MCP token available to the environment that
+starts Codex:
 
 ```sh
 export TG_MCP_TOKEN="$(uv run tg-mcp show-token)"
 ```
 
-Do not commit the token or put it in the plugin files. Install the repository marketplace and the
-plugin:
+On the same machine, the bridge reads the token from `~/.local/share/tg-mcp` (or
+`TG_MCP_STATE_DIR`) using the state store's ownership and permission checks, so this export is not
+needed. Do not commit the token or put it in the plugin files. Install the repository marketplace
+and the plugin:
 
 ```sh
 codex plugin marketplace add Mesteriis/tg-account-mcp --ref main

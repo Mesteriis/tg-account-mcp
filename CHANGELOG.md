@@ -5,6 +5,13 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-17
+
+### Fixed
+
+- Let the Codex bridge use the protected local server token automatically when it runs on the same
+  machine.
+
 ## [0.5.0] - 2026-09-17
 
 ### Added

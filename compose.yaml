@@ -15,6 +15,11 @@ services:
       TG_MCP_BIND: 0.0.0.0
       TG_MCP_ALLOWED_HOSTS: "${TG_MCP_DOMAIN:?Set TG_MCP_DOMAIN in .env},${TG_MCP_DOMAIN}:443"
       TG_MCP_ALLOWED_ORIGINS: "https://${TG_MCP_DOMAIN}"
+      TG_MCP_DISCOVERY: "true"
+      TG_MCP_DISCOVERY_PORT: "${TG_MCP_DISCOVERY_PORT:-38475}"
+      TG_MCP_DISCOVERY_URL: "https://${TG_MCP_DOMAIN}/mcp"
+    ports:
+      - "${TG_MCP_DISCOVERY_PORT:-38475}:${TG_MCP_DISCOVERY_PORT:-38475}/udp"
     volumes:
       - tg_state:/var/lib/tg-mcp
     healthcheck:

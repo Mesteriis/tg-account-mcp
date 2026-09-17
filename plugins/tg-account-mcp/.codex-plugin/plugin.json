@@ -1,6 +1,6 @@
 {
   "name": "tg-account-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Connect Codex to a self-hosted multi-account Telegram MCP server.",
   "author": {
     "name": "Mesteriis",
@@ -19,7 +19,7 @@
   "interface": {
     "displayName": "TG Account MCP",
     "shortDescription": "Work with Telegram accounts and bots from Codex.",
-    "longDescription": "Connects Codex to TG Account MCP and provides reliable workflows for finding chats, reading folders and history, handling attachments, drafting replies, and sending through an explicitly selected Telegram identity.",
+    "longDescription": "Discovers an authenticated TG Account MCP service on loopback or the local network and provides reliable workflows for finding chats, reading folders and history, handling attachments, drafting replies, and sending through an explicitly selected Telegram identity.",
     "developerName": "Mesteriis",
     "category": "Productivity",
     "capabilities": [

@@ -1,10 +1,19 @@
 {
   "mcpServers": {
     "tg-account": {
-      "type": "http",
-      "url": "http://127.0.0.1:8765/mcp",
-      "bearer_token_env_var": "TG_MCP_TOKEN",
-      "startup_timeout_sec": 15,
+      "command": "uvx",
+      "args": [
+        "--from",
+        "tg-account-mcp==0.5.0",
+        "tg-mcp",
+        "bridge"
+      ],
+      "env_vars": [
+        "TG_MCP_TOKEN",
+        "TG_MCP_URL",
+        "TG_MCP_DISCOVERY_PORT"
+      ],
+      "startup_timeout_sec": 45,
       "tool_timeout_sec": 180
     }
   }

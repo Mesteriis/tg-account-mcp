@@ -5,11 +5,15 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-17
+
 ### Added
 
 - Installable Codex plugin with a local MCP connection, repository marketplace metadata, and
   agent workflows for multi-account chat discovery, folder review, attachments, drafts, and
   idempotent sending.
+- Authenticated local-network service discovery and a stdio bridge for clients whose MCP endpoint
+  cannot be configured dynamically.
 
 ## [0.4.0] - 2026-09-16
 

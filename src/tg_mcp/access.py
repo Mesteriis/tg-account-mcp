@@ -174,6 +174,13 @@ class AgentAccessStore:
         with self._lock:
             return [self._public(record) for record in self._records]
 
+    def enabled_token_digests(self) -> tuple[bytes, ...]:
+        """Return digest bytes for authenticated discovery without exposing token material."""
+        with self._lock:
+            return tuple(
+                bytes.fromhex(record["token_hash"]) for record in self._records if record["enabled"]
+            )
+
     def revoke(self, agent_id: str) -> dict:
         with self._lock:
             for record in self._records:

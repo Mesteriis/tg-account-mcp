@@ -3,7 +3,7 @@
   "name": "io.github.mesteriis/tg-account-mcp",
   "title": "TG multi-account MCP",
   "description": "Self-hosted, consent-based access to Telegram accounts and bots for MCP clients",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "websiteUrl": "https://github.com/Mesteriis/tg-account-mcp",
   "repository": {
     "url": "https://github.com/Mesteriis/tg-account-mcp",
@@ -14,7 +14,7 @@
     {
       "registryType": "pypi",
       "identifier": "tg-account-mcp",
-      "version": "0.4.0",
+      "version": "0.5.0",
       "runtimeHint": "uvx",
       "packageArguments": [
         {

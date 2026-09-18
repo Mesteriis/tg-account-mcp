@@ -1,6 +1,6 @@
 # TG multi-account MCP
 
-<!-- mcp-name: io.github.mesteriis/tg-account-mcp -->
+<!-- mcp-name: io.github.Mesteriis/tg-account-mcp -->
 
 [Русская документация](README.ru.md)
 

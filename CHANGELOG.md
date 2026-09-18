@@ -5,6 +5,12 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-18
+
+### Fixed
+
+- Match the case-sensitive MCP Registry namespace to the verified GitHub owner name.
+
 ## [0.5.1] - 2026-09-17
 
 ### Fixed

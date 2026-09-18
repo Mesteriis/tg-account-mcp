@@ -1,6 +1,6 @@
 {
   "name": "tg-account-mcp",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Connect Codex to a self-hosted multi-account Telegram MCP server.",
   "author": {
     "name": "Mesteriis",

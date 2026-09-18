@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.mesteriis/tg-account-mcp",
+  "name": "io.github.Mesteriis/tg-account-mcp",
   "title": "TG multi-account MCP",
   "description": "Self-hosted, consent-based access to Telegram accounts and bots for MCP clients",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "websiteUrl": "https://github.com/Mesteriis/tg-account-mcp",
   "repository": {
     "url": "https://github.com/Mesteriis/tg-account-mcp",
@@ -14,7 +14,7 @@
     {
       "registryType": "pypi",
       "identifier": "tg-account-mcp",
-      "version": "0.5.1",
+      "version": "0.5.2",
       "runtimeHint": "uvx",
       "packageArguments": [
         {

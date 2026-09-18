@@ -28,7 +28,7 @@ def test_codex_plugin_uses_discovery_bridge_without_embedding_a_token() -> None:
     assert server["command"] == "uvx"
     assert server["args"] == [
         "--from",
-        "tg-account-mcp==0.5.1",
+        "tg-account-mcp==0.5.2",
         "tg-mcp",
         "bridge",
     ]

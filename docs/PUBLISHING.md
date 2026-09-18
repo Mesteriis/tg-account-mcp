@@ -45,8 +45,8 @@ Update `pyproject.toml`, `src/tg_mcp/__init__.py`, and `CHANGELOG.md` to the sam
 checks locally, commit the change, then create a matching tag:
 
 ```sh
-git tag -a v0.5.1 -m "v0.5.1"
-git push origin v0.5.1
+git tag -a v0.5.2 -m "v0.5.2"
+git push origin v0.5.2
 ```
 
 The release workflow verifies that the tag matches `pyproject.toml`, runs lint and tests, builds
@@ -67,7 +67,7 @@ mcp-publisher login github
 mcp-publisher publish
 ```
 
-Use the verified name `io.github.mesteriis/tg-account-mcp`. The README and OCI image already carry
+Use the verified name `io.github.Mesteriis/tg-account-mcp`. The README and OCI image already carry
 the matching ownership markers required by the registry.
 
 This service needs persistent private state and user-specific Telegram credentials. Prefer a

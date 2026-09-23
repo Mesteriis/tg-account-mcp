@@ -5,6 +5,7 @@ let selectedDays = 14;
 let data = null;
 let renderedWizardKey = null;
 let chartAnimationFrame = 0;
+let suppressAutoAccount = sessionStorage.getItem('tg-mcp-suppress-auto-account') === '1';
 const reducedChartMotion = window.matchMedia
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : {matches: false};
@@ -401,6 +402,19 @@ function iconButton(label, icon, handler, extra = '') {
 
 async function patchAccount(id, body) { await api(`/setup/api/accounts/${id}`, {method: 'PATCH', body: JSON.stringify(body)}); await refresh(); }
 
+async function deleteAccount(row) {
+  const name = row.username ? `@${row.username}` : (row.label || 'этот аккаунт');
+  if (!window.confirm(`Удалить ${name} и его Telegram-сессию с сервера?`)) return;
+  try {
+    suppressAutoAccount = true;
+    sessionStorage.setItem('tg-mcp-suppress-auto-account', '1');
+    await api(`/setup/api/accounts/${row.account_id}`, {method: 'DELETE'});
+    renderedWizardKey = null;
+    showNotice('Аккаунт и его сессия удалены', true);
+    await refresh();
+  } catch (error) { showNotice(error.message); }
+}
+
 function wizard(row) {
   const card = document.createElement('article'); card.className = 'panel wizard-card';
   const visual = document.createElement('div'); visual.className = 'wizard-visual';
@@ -429,6 +443,7 @@ function wizard(row) {
     const p = document.createElement('p'); p.className = 'wizard-error'; p.textContent = row.error || statusLabel(row.status); content.insertBefore(p, q('.wizard-steps', content));
     content.append(iconButton('Получить новый QR', 'ph-qr-code', async () => { try { await api(`/setup/api/accounts/${row.account_id}/login`, {method: 'POST'}); await refresh(); } catch (error) { showNotice(error.message); } }, 'primary'));
   }
+  content.append(iconButton('Удалить аккаунт', 'ph-warning-circle', () => deleteAccount(row), 'danger'));
   card.append(visual, content); return card;
 }
 
@@ -438,6 +453,7 @@ function entityCard(row, type) {
   q('h3', card).textContent = row.label || (isBot ? 'Telegram-бот' : 'Аккаунт'); q('.handle', card).textContent = row.username ? `@${row.username}` : 'Без username'; const strongs = qa('.entity-meta strong', card); strongs[0].textContent = statusLabel(row.status); strongs[0].style.color = row.status === 'ready' ? '#48db91' : row.status === 'disabled' ? '#8fa1b8' : '#f2b84b'; strongs[1].textContent = id;
   const actions = q('.entity-actions', card); actions.append(iconButton(row.enabled ? 'Отключить' : 'Включить', row.enabled ? 'ph-pause' : 'ph-play', async () => { try { if (isBot) await api(`/setup/api/bots/${id}`, {method: 'PATCH', body: JSON.stringify({enabled: !row.enabled})}); else await patchAccount(id, {enabled: !row.enabled}); await refresh(); } catch (error) { showNotice(error.message); } }, 'secondary'));
   if (!isBot && row.enabled && ['revoked', 'error'].includes(row.status)) actions.append(iconButton('Новый QR', 'ph-qr-code', async () => { try { await api(`/setup/api/accounts/${id}/login`, {method: 'POST'}); await refresh(); } catch (error) { showNotice(error.message); } }, 'secondary'));
+  if (!isBot) actions.append(iconButton('Удалить', 'ph-warning-circle', () => deleteAccount(row), 'danger'));
   return card;
 }
 
@@ -457,6 +473,8 @@ function renderManagement() {
 
 async function startAccount() {
   navigate('accounts');
+  suppressAutoAccount = false;
+  sessionStorage.removeItem('tg-mcp-suppress-auto-account');
   try { await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); } catch (error) { showNotice(error.message); }
 }
 
@@ -465,7 +483,7 @@ async function refresh() {
     data = await api('/setup/api/status');
     $('versionLabel').textContent = data.version ? `TG MCP v${data.version}` : 'TG MCP';
     renderSummary(); renderIdentities(); renderFilters(); renderAnalytics(); renderManagement();
-    if (!data.accounts.length && !autoStarting) { autoStarting = true; await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); }
+    if (!data.accounts.length && !autoStarting && !suppressAutoAccount) { autoStarting = true; await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); }
   } catch (error) {
     $('syncLabel').textContent = 'Нет доступа к данным';
     showNotice(error.message);

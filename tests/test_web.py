@@ -33,6 +33,14 @@ def test_2fa_wizard_explains_password_and_allows_restart():
     assert "Начать заново" in script
 
 
+def test_account_cards_offer_confirmed_deletion():
+    script = (Path(__file__).parents[1] / "src/tg_mcp/static/app.js").read_text()
+
+    assert "Удалить аккаунт" in script
+    assert "window.confirm" in script
+    assert "method: 'DELETE'" in script
+
+
 def test_chart_wave_animation_is_bounded_and_respects_reduced_motion():
     script = (Path(__file__).parents[1] / "src/tg_mcp/static/app.js").read_text()
 
@@ -57,6 +65,7 @@ class FakeManager:
         )
         self.rename_account = AsyncMock(return_value={"account_id": ACCOUNT, "label": "New"})
         self.set_account_enabled = AsyncMock(return_value={"account_id": ACCOUNT, "enabled": False})
+        self.delete_account = AsyncMock(return_value={"account_id": ACCOUNT, "deleted": True})
         self.add_bot = AsyncMock(return_value={"bot_id": BOT, "label": "Helper", "status": "ready"})
         self.rename_bot = AsyncMock(return_value={"bot_id": BOT, "label": "New"})
         self.set_bot_enabled = AsyncMock(return_value={"bot_id": BOT, "enabled": False})
@@ -167,6 +176,9 @@ async def test_account_and_bot_actions_and_body_limit(tmp_path):
         assert response.status_code == 201
         response = await client.patch(f"/setup/api/accounts/{ACCOUNT}", json={"enabled": False})
         assert response.status_code == 200
+        response = await client.delete(f"/setup/api/accounts/{ACCOUNT}")
+        assert response.status_code == 200
     manager.add_account.assert_awaited_once_with()
     manager.add_bot.assert_awaited_once()
     manager.set_account_enabled.assert_awaited_once_with(ACCOUNT, False)
+    manager.delete_account.assert_awaited_once_with(ACCOUNT)

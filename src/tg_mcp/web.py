@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
+from tg_mcp import __version__
 from tg_mcp.errors import GatewayError
 
 SECURITY_HEADERS = {
@@ -91,6 +92,7 @@ def setup_routes(manager, telemetry) -> list[Route]:
         accounts = [manager.login_state(row["account_id"]) for row in manager.list_accounts()]
         return _json(
             {
+                "version": __version__,
                 "summary": manager.status(),
                 "accounts": accounts,
                 "bots": manager.list_bots(),

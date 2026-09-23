@@ -19,6 +19,12 @@ Record demos with a dedicated test account or fully synthetic/redacted chat data
 login URLs, Telegram sessions, API credentials, Bearer tokens, passwords, private chat names, or
 message content without consent.
 
+Canonical links:
+
+- GitHub: <https://github.com/Mesteriis/tg-account-mcp>
+- PyPI: <https://pypi.org/project/tg-account-mcp/>
+- Container: `ghcr.io/mesteriis/tg-account-mcp`
+
 ## Where to announce
 
 Publish the canonical release on GitHub first, then PyPI, GHCR, and the official MCP Registry.
@@ -57,12 +63,12 @@ the community and stay available to answer setup and security questions.
 > owner's knowledge for actions and specific continuing consent from every relevant user before
 > their content is provided to an AI system, so the README makes that operating boundary explicit.
 
-Add the actual GitHub URL and one short demo after the repository is public.
+Link the title or body to <https://github.com/Mesteriis/tg-account-mcp> and include one short demo
+made with synthetic or explicitly consented data.
 
 ## Draft short announcement
 
 > Released TG multi-account MCP: an unofficial self-hosted server for consent-based agent
 > workflows over Telegram chats and folders, with explicitly selected user or bot senders.
-> QR/2FA onboarding, scoped agent tokens, Docker Compose, 44 tools, Apache-2.0. [repository link]
-
-Replace `[repository link]` only after the public repository exists.
+> QR/2FA onboarding, scoped agent tokens, Docker Compose, 44 tools, Apache-2.0.
+> <https://github.com/Mesteriis/tg-account-mcp>

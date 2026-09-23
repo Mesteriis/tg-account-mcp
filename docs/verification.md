@@ -1,26 +1,41 @@
-# Проверка multi-account версии
+# Verification record
 
-Дата: 2026-09-16. Локальная среда: macOS, Python 3.12; контейнер: Linux, Python 3.12, UID/GID 10001.
+Date: 2026-09-23. Local environment: macOS, Python 3.12. Container target: Linux,
+Python 3.12, UID/GID 10001.
 
-| Проверка | Фактический результат |
+| Check | Result |
 | --- | --- |
 | `uv run ruff check .` | PASS |
-| `uv run ruff format --check .` | PASS, 28 Python-файлов |
-| `uv run pytest -q` | PASS, 75 тестов |
-| `uv build` | PASS, созданы wheel и sdist |
+| `uv run ruff format --check .` | PASS, 51 files |
+| `uv run pytest -q` | PASS, 129 tests |
+| `uv build` | PASS, wheel and source distribution built for 0.5.2 |
 | `TG_MCP_DOMAIN=mcp.example.test docker compose config --quiet` | PASS |
-| `docker build -t tg-account-mcp:local .` | PASS |
-| Caddy 2.10 `validate` | PASS, `Valid configuration` |
-| Реальный локальный процесс на `127.0.0.1:8765` | `GET /` → 200, `GET /setup/api/status` → 200 с loopback, `/mcp` без токена → 401 |
-| Приватное состояние | каталог и session/config/identity/lock-файлы имеют 0700/0600 |
-| Локальная страница | открыта в браузере; мигрированная запись `Primary` находится в `waiting_qr`, SVG QR отображается |
+| `docker build -t tg-account-mcp:docs-audit .` | PASS |
+| Tool catalog comparison | PASS, 44 implementation tools and 44 documented tools; no differences |
+| Local Markdown link check | PASS |
 
-Тесты покрывают пустой старт, атомарную миграцию старой сессии, мастер QR → опциональная 2FA → имя, запрет MCP-доступа до завершения имени, несколько пользовательских аккаунтов и ботов, независимые ошибки соединения, обновление просроченного QR, предел трёх неверных паролей, запрет повторного Telegram user ID, отключение и повторное включение идентичности. Курсоры истории связаны с выбранным аккаунтом.
+The tests cover empty startup, atomic legacy-session migration, the QR → optional 2FA → account
+name wizard, duplicate Telegram-user rejection, independent account failures, QR expiry, the
+three-attempt password limit, hot enable/disable, multiple accounts and bots, cursors, attachment
+chunks, folders, global search, drafts, idempotent writes, scoped tokens, and authenticated LAN
+discovery. They use fake Telegram adapters and do not send real messages.
 
-HTTP-проверки покрывают публичную HTML-оболочку без данных, обязательный Bearer для удалённого setup API и MCP, строго loopback bypass, Host/Origin, CSP/no-store, ограничение тела и очищенные ошибки. Настоящий MCP SDK поверх локального HTTP подтвердил восемь инструментов, обязательные `account_id`/`bot_id` и маршрутизацию одинакового `chat_id` в разные gateway.
+HTTP coverage includes the public data-free page shell, Bearer authentication for remote setup
+and MCP requests, the strict loopback exception, exact Host and Origin allowlists, CSP and
+`no-store`, request-size limits, and sanitized errors. The dashboard receives its displayed
+version from the authenticated status response rather than from hard-coded HTML.
 
-Docker health check требует одновременно 200 от `/` и ожидаемый 401 от `/mcp`. Caddy проксирует `/`, `/setup/api/*` и `/mcp` с отдельными ограничениями тела. Образ собирается с непривилегированным пользователем и read-only совместимой файловой системой.
+A direct-LAN deployment reproduced the documented Origin failure safely: with no allowed browser
+Origin, an authenticated PATCH returned boundary-level `403 forbidden`; after adding the exact
+dashboard Origin, the same request against a deliberately nonexistent identity reached
+application validation and returned `400 identity_not_found`. No real identity changed during
+that check.
 
-Живой Telegram QR получен с импортированными реквизитами приложения; QR URL и секреты в отчёт не записывались. Авторизация владельца, добавление второго реального аккаунта, реальное чтение и отправка ещё не подтверждены: страница оставлена открытой для сканирования владельцем. Удалённое развёртывание ожидает выбора сервера. Реальные сообщения не отправлялись.
+An installed Codex plugin bridge with no fixed endpoint discovered an authenticated private LAN
+service, initialized server version 0.5.2, and listed all 44 tools. No account names, tokens,
+session data, message content, or Telegram credentials were recorded.
 
-Исходная папка не является Git-репозиторием; коммиты и публикация не выполнялись.
+Publication status was checked against primary endpoints on 2026-09-23: GitHub release `v0.5.2`
+and its release workflow are successful, PyPI reports 0.5.2, the matching GHCR manifest is
+available, and the official MCP Registry returns the case-sensitive name
+`io.github.Mesteriis/tg-account-mcp`.

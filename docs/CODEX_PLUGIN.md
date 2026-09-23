@@ -37,11 +37,19 @@ valid proofs and signs its endpoint response, so automatic discovery never broad
 token or sends it before authenticating the endpoint.
 
 To make a directly launched server discoverable on the LAN, bind it to all interfaces. Exact local
-interface addresses are added to the Host allowlist when discovery is active:
+interface addresses are added to the Host allowlist when discovery is active. The browser
+dashboard also needs its exact Origin in the allowlist so mutating setup requests are accepted:
 
 ```sh
-TG_MCP_BIND=0.0.0.0 TG_MCP_PORT=8765 uv run tg-mcp serve
+TG_MCP_BIND=0.0.0.0 \
+TG_MCP_PORT=8765 \
+TG_MCP_ALLOWED_ORIGINS=http://192.168.1.50:8765 \
+tg-mcp serve
 ```
+
+Replace `192.168.1.50` with the server's LAN address. Enter the administrative MCP token in the
+dashboard; it stays in that tab's memory. A missing Origin entry causes browser mutations to
+return `403 forbidden` even when Bearer authentication succeeds.
 
 Allow inbound TCP `8765` and UDP `38475` only from the trusted local network. Docker Compose
 publishes the UDP discovery port and advertises its configured HTTPS domain.

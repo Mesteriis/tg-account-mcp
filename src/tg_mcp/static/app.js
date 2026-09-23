@@ -472,6 +472,7 @@ async function startAccount() {
 async function refresh() {
   try {
     data = await api('/setup/api/status');
+    $('versionLabel').textContent = data.version ? `TG MCP v${data.version}` : 'TG MCP';
     renderSummary(); renderIdentities(); renderFilters(); renderAnalytics(); renderManagement();
     if (!data.accounts.length && !autoStarting) { autoStarting = true; await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); }
   } catch (error) {

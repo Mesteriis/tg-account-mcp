@@ -5,6 +5,15 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Render the dashboard version from the running package instead of a stale hard-coded value.
+
+### Documentation
+
+- Document PyPI installation, direct LAN deployment with an exact browser Origin allowlist, and
+  the current GitHub, PyPI, GHCR, MCP Registry, and verification status.
+
 ## [0.5.2] - 2026-09-18
 
 ### Fixed

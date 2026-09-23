@@ -48,6 +48,14 @@ class StateStore:
             raise LocalError("Invalid account ID")
         return self.accounts_dir / f"{account_id}.session"
 
+    def delete_account_session(self, account_id: str) -> None:
+        path = self.account_session_path(account_id)
+        candidates = list(path.parent.glob(f"{path.name}*"))
+        for candidate in candidates:
+            self._check_file(candidate)
+        for candidate in candidates:
+            candidate.unlink()
+
     def _check_file(self, path: Path) -> None:
         try:
             info = path.lstat()

@@ -4,7 +4,7 @@
       "command": "uvx",
       "args": [
         "--from",
-        "tg-account-mcp==0.6.1",
+        "tg-account-mcp==0.7.0",
         "tg-mcp",
         "bridge"
       ],

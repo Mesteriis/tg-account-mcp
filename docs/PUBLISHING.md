@@ -6,8 +6,8 @@ MCP Registry. Its canonical source is <https://github.com/Mesteriis/tg-account-m
 ## 1. Public repository and release channels
 
 As verified on 2026-09-23, the repository is public at
-<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.6.1` is published through GitHub Releases,
-PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.6.1`, and the official MCP Registry under
+<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.7.0` is published through GitHub Releases,
+PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.7.0`, and the official MCP Registry under
 `io.github.Mesteriis/tg-account-mcp`.
 
 Keep these repository settings enabled:
@@ -39,10 +39,10 @@ uses OIDC Trusted Publishing and does not require a long-lived PyPI token.
 
 Update `pyproject.toml`, `src/tg_mcp/__init__.py`, plugin package pins, and `CHANGELOG.md` to the
 same version where applicable. Run all checks locally, commit the change, then create a matching
-tag. For example, with `VERSION=0.6.1`:
+tag. For example, with `VERSION=0.7.0`:
 
 ```sh
-VERSION=0.6.1
+VERSION=0.7.0
 git tag -a "v${VERSION}" -m "v${VERSION}"
 git push origin "v${VERSION}"
 ```

@@ -120,6 +120,17 @@ class IdentityCatalog:
         self.save()
         return account
 
+    def remove_account(self, account_id: str) -> AccountRecord:
+        account = self.account(account_id)
+        index = self.document.accounts.index(account)
+        self.document.accounts.pop(index)
+        try:
+            self.save()
+        except Exception:
+            self.document.accounts.insert(index, account)
+            raise
+        return account
+
     def rename_bot(self, bot_id: str, label: str) -> BotRecord:
         bot = self.bot(bot_id)
         self._unique_label(label, self.document.bots, bot_id)

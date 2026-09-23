@@ -25,6 +25,7 @@ endorsed by Telegram.
 ## What it supports
 
 - Multiple Telegram user accounts, each with its own QR/2FA onboarding flow and session.
+- Dashboard controls to disable, reconnect, or permanently delete an account and its local session.
 - Optional Telegram bots connected independently through BotFather tokens.
 - Streamable HTTP MCP with Bearer-token authentication.
 - Chat, folder, message, attachment, mention, topic, reply-thread, and global search tools.

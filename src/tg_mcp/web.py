@@ -144,6 +144,13 @@ def setup_routes(manager, telemetry) -> list[Route]:
         except GatewayError as exc:
             return _json({"error": exc.as_dict()}, 400)
 
+    async def account_delete(request: Request) -> Response:
+        try:
+            return _json(await manager.delete_account(request.path_params["account_id"]))
+        except GatewayError as exc:
+            code = 404 if exc.code == "identity_not_found" else 400
+            return _json({"error": exc.as_dict()}, code)
+
     async def bots(request: Request) -> Response:
         try:
             body = await _body(request, BotBody)
@@ -178,6 +185,7 @@ def setup_routes(manager, telemetry) -> list[Route]:
             methods=["POST"],
         ),
         Route("/setup/api/accounts/{account_id:str}", account_patch, methods=["PATCH"]),
+        Route("/setup/api/accounts/{account_id:str}", account_delete, methods=["DELETE"]),
         Route("/setup/api/bots", bots, methods=["POST"]),
         Route("/setup/api/bots/{bot_id:str}", bot_patch, methods=["PATCH"]),
     ]

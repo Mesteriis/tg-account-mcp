@@ -5,6 +5,13 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-23
+
+### Added
+
+- Add confirmed account deletion to the dashboard and setup API. Deletion disconnects the account,
+  removes it from the identity catalog, and deletes its local Telethon session files.
+
 ## [0.6.1] - 2026-09-23
 
 ### Fixed

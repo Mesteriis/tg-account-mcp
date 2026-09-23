@@ -162,20 +162,19 @@ or global-search tools because those operations could reveal neighboring chats.
 ## Direct LAN deployment
 
 For a trusted private network without the Compose HTTPS proxy, bind the service to the LAN and
-allow the dashboard's exact browser origin:
+start it on the LAN:
 
 ```sh
 TG_MCP_BIND=0.0.0.0 \
 TG_MCP_PORT=8765 \
-TG_MCP_ALLOWED_ORIGINS=http://192.168.1.50:8765 \
 tg-mcp serve
 ```
 
-Replace `192.168.1.50` with the server's LAN address. Remote dashboard data and mutations still
-require the administrative Bearer token. Without the exact Origin entry, safe reads that omit an
-Origin header may work while browser actions such as adding, renaming, disabling, or enabling an
-identity return `403 forbidden`. Permit TCP `8765` and discovery UDP `38475` only from trusted
-networks. Prefer the Compose HTTPS deployment when traffic crosses an untrusted network.
+Open the server's LAN address in a browser. The dashboard does not ask for a token, so every user
+who can reach it can view its metadata and manage Telegram identities. Same-origin browser requests
+are accepted automatically; a separate frontend origin must be added to
+`TG_MCP_ALLOWED_ORIGINS`. Permit TCP `8765` and discovery UDP `38475` only from trusted networks.
+Use a VPN or an authenticating reverse proxy when traffic crosses an untrusted network.
 
 ## Docker Compose deployment
 
@@ -189,9 +188,9 @@ docker compose run --rm --no-deps tg-mcp setup
 docker compose up -d
 ```
 
-Open `https://your-domain.example/#token=<MCP_TOKEN>` for initial setup. The URL fragment is not
-sent to the server; the page removes it from the address bar and keeps the token in tab memory.
-Agents connect to `https://your-domain.example/mcp`.
+Open `https://your-domain.example/` for initial setup. The dashboard is intentionally available
+without a token; protect the domain with network policy or an authenticating reverse proxy.
+Agents still connect to `https://your-domain.example/mcp` with a Bearer token.
 
 Compose also publishes authenticated UDP discovery on port `38475` and advertises that HTTPS
 endpoint to clients on the same private network. Change `TG_MCP_DISCOVERY_PORT` on both sides when
@@ -206,7 +205,8 @@ replica per state volume.
 - The state directory is required to have mode `0700`; sensitive files use `0600`.
 - Symlinks, hard-linked sensitive files, foreign ownership, and broad permissions are rejected.
 - The web UI has no third-party scripts, fonts, analytics, or remote assets.
-- Account data and setup APIs require the Bearer token when the service is not loopback-bound.
+- Dashboard account data and setup APIs are available without a token to clients that can reach
+  the server; the MCP endpoint always requires a Bearer token.
 - Host and Origin values are checked against exact allowlists; wildcards are rejected.
 - Logs and operations history omit message bodies, search terms, credentials, QR URLs, and 2FA
   passwords.

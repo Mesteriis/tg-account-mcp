@@ -1,6 +1,5 @@
 'use strict';
 
-let bearer = '';
 let autoStarting = false;
 let selectedDays = 14;
 let data = null;
@@ -9,16 +8,9 @@ let chartAnimationFrame = 0;
 const reducedChartMotion = window.matchMedia
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : {matches: false};
-const fragment = new URLSearchParams(location.hash.slice(1));
-if (fragment.has('token')) {
-  bearer = fragment.get('token') || '';
-  history.replaceState(null, '', location.pathname + location.search);
-}
-
 const $ = (id) => document.getElementById(id);
 const q = (selector, root = document) => root.querySelector(selector);
 const qa = (selector, root = document) => [...root.querySelectorAll(selector)];
-const headers = () => bearer ? {'Authorization': `Bearer ${bearer}`} : {};
 
 function replaceIcons(root = document) {
   const icons = root.matches?.('i.ph') ? [root] : qa('i.ph', root);
@@ -95,7 +87,6 @@ const operationCopy = {
 
 async function api(path, options = {}) {
   options.headers = {
-    ...headers(),
     ...(options.body ? {'Content-Type': 'application/json'} : {}),
     ...(options.headers || {}),
   };
@@ -477,7 +468,6 @@ async function refresh() {
     if (!data.accounts.length && !autoStarting) { autoStarting = true; await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); }
   } catch (error) {
     $('syncLabel').textContent = 'Нет доступа к данным';
-    if (!bearer && /401|Bearer|authorized/i.test(error.message)) navigate('access');
     showNotice(error.message);
   }
 }
@@ -487,7 +477,6 @@ qa('[data-view-link]').forEach((button) => button.addEventListener('click', () =
 $('mobileMenu').onclick = () => $('sidebar').classList.contains('open') ? closeSidebar() : openSidebar();
 $('sidebarScrim').onclick = closeSidebar;
 $('headerConnect').onclick = startAccount; $('startAccount').onclick = startAccount;
-$('saveToken').onclick = () => { bearer = $('token').value.trim(); $('token').value = ''; showNotice('Токен применён к этой вкладке', true); refresh(); };
 $('botForm').onsubmit = async (event) => { event.preventDefault(); try { await api('/setup/api/bots', {method: 'POST', body: JSON.stringify({label: $('botLabel').value, token: $('botToken').value})}); $('botLabel').value = ''; $('botToken').value = ''; showNotice('Бот подключён', true); await refresh(); } catch (error) { showNotice(error.message); } };
 qa('#rangeSelector button').forEach((button) => button.addEventListener('click', () => { selectedDays = Number(button.dataset.days); qa('#rangeSelector button').forEach((item) => item.classList.toggle('active', item === button)); renderAnalytics(); }));
 ['historySearch', 'identityFilter', 'actionFilter', 'statusFilter'].forEach((id) => $(id).addEventListener(id === 'historySearch' ? 'input' : 'change', renderHistory));

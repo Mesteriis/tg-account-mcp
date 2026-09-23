@@ -6,8 +6,8 @@ MCP Registry. Its canonical source is <https://github.com/Mesteriis/tg-account-m
 ## 1. Public repository and release channels
 
 As verified on 2026-09-23, the repository is public at
-<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.5.2` is available from GitHub Releases,
-PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.5.2`, and the official MCP Registry under
+<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.6.0` is published through GitHub Releases,
+PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.6.0`, and the official MCP Registry under
 `io.github.Mesteriis/tg-account-mcp`.
 
 Keep these repository settings enabled:
@@ -21,8 +21,8 @@ The repository topics and package metadata already contain the canonical project
 
 ## 2. Configure PyPI Trusted Publishing
 
-The distribution name is `tg-account-mcp`. PyPI Trusted Publishing is active: the successful
-`v0.5.2` release workflow published the package without a long-lived PyPI token.
+The distribution name is `tg-account-mcp`. PyPI Trusted Publishing is active, and the release
+workflow publishes the package without a long-lived PyPI token.
 
 If the publisher must be recreated, configure it at
 <https://pypi.org/manage/account/publishing/> with:
@@ -39,10 +39,10 @@ uses OIDC Trusted Publishing and does not require a long-lived PyPI token.
 
 Update `pyproject.toml`, `src/tg_mcp/__init__.py`, plugin package pins, and `CHANGELOG.md` to the
 same version where applicable. Run all checks locally, commit the change, then create a matching
-tag. For example, with `VERSION=0.5.3`:
+tag. For example, with `VERSION=0.6.1`:
 
 ```sh
-VERSION=0.5.3
+VERSION=0.6.1
 git tag -a "v${VERSION}" -m "v${VERSION}"
 git push origin "v${VERSION}"
 ```

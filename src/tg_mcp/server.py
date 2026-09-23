@@ -1304,6 +1304,5 @@ def create_app(
         token,
         settings.allowed_hosts,
         settings.allowed_origins,
-        bind_host=settings.host,
         scoped_token_resolver=access_store.verify,
     )

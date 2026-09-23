@@ -5,14 +5,23 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-23
+
+### Changed
+
+- Make the dashboard and setup API available without a Bearer token while keeping `/mcp`
+  authenticated and preserving exact Host and browser Origin checks.
+- Accept same-origin dashboard mutations automatically; `TG_MCP_ALLOWED_ORIGINS` remains available
+  for a frontend hosted on a separate origin.
+
 ### Fixed
 
 - Render the dashboard version from the running package instead of a stale hard-coded value.
 
 ### Documentation
 
-- Document PyPI installation, direct LAN deployment with an exact browser Origin allowlist, and
-  the current GitHub, PyPI, GHCR, MCP Registry, and verification status.
+- Document PyPI installation, the token-free trusted-network dashboard, and the current GitHub,
+  PyPI, GHCR, MCP Registry, and verification status.
 
 ## [0.5.2] - 2026-09-18
 

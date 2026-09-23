@@ -7,7 +7,7 @@ flowchart LR
     A[MCP clients] -->|Streamable HTTP + Bearer token| S[Starlette / MCP server]
     C[Codex plugin] -->|stdio bridge| A
     C -. HMAC-authenticated UDP discovery .-> S
-    B[Setup browser] -->|HTTPS + Bearer token| W[Setup API]
+    B[Trusted setup browser] -->|HTTPS + Host/Origin boundary| W[Setup API]
     S --> M[Identity manager]
     W --> M
     M --> U[Telethon user sessions]
@@ -18,7 +18,7 @@ flowchart LR
 ## Components
 
 - `cli.py` owns local administration, process startup, credential creation, and token rotation.
-- `web.py` serves the static dashboard and authenticated setup API.
+- `web.py` serves the static dashboard and setup API for trusted network users.
 - `server.py` defines MCP tools, authorization checks, idempotent writes, and sanitized errors.
 - `manager.py` owns account/bot lifecycle and isolates failures to one identity.
 - `telegram.py` adapts Telethon operations to the server's stable data contracts.
@@ -45,17 +45,19 @@ not a distributed database and one state volume must not be mounted by multiple 
 
 Telegram content is untrusted input. It is returned as data and must not be interpreted as an
 instruction by an agent. Tool arguments are validated before reaching Telegram, and upstream
-exception text is not returned to clients. Authentication is checked for every setup and MCP
-request; tool-level authorization then checks scope, identity, and chat restrictions.
+exception text is not returned to clients. The setup boundary validates exact Host and browser
+Origin values, while every MCP request requires authentication. Tool-level authorization then
+checks scope, identity, and chat restrictions.
 
 Local-network discovery uses the SHA-256 digest already used for token lookup as an HMAC key. An
 endpoint is accepted only when its response proves knowledge of the same master or active scoped
 token. Plain HTTP discovery responses are limited to private, loopback, and link-local addresses.
 An explicit public endpoint must use HTTPS.
 
-The dashboard uses bundled static assets and a restrictive Content Security Policy. In the
-Compose deployment, Caddy is the public network boundary and the Python service remains on the
-internal network.
+The dashboard uses bundled static assets and a restrictive Content Security Policy. It has no
+application token prompt, so deployments must restrict it to trusted users with network policy or
+an authenticating reverse proxy. In the Compose deployment, Caddy is the network boundary and the
+Python service remains on the internal network.
 
 ## Testing
 

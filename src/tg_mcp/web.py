@@ -26,7 +26,11 @@ SECURITY_HEADERS = {
 }
 
 STATIC_ROOT = Path(__file__).with_name("static")
-PAGE = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+PAGE = (
+    (STATIC_ROOT / "index.html")
+    .read_text(encoding="utf-8")
+    .replace("__TG_MCP_VERSION__", __version__)
+)
 
 
 class LabelBody(BaseModel):
@@ -86,7 +90,10 @@ def setup_routes(manager, telemetry) -> list[Route]:
         is_icon = name.startswith("icon-") and name.endswith(".svg")
         if name not in allowed and not (is_icon and (STATIC_ROOT / name).is_file()):
             return Response(status_code=404, headers=SECURITY_HEADERS)
-        return FileResponse(STATIC_ROOT / name, headers={"X-Content-Type-Options": "nosniff"})
+        return FileResponse(
+            STATIC_ROOT / name,
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
 
     async def status(request: Request) -> Response:
         accounts = [manager.login_state(row["account_id"]) for row in manager.list_accounts()]

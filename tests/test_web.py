@@ -105,7 +105,8 @@ async def test_page_is_public_and_has_safe_headers(tmp_path):
     assert "accountLabel" not in response.text
     assert 'id="saveToken"' not in response.text
     assert 'id="token"' not in response.text
-    assert "/assets/app.css" in response.text
+    assert f"/assets/app.css?v={__version__}" in response.text
+    assert f"/assets/app.js?v={__version__}" in response.text
 
 
 async def test_remote_setup_is_available_without_bearer(tmp_path):
@@ -130,7 +131,9 @@ async def test_static_assets_are_local_and_allowlisted(tmp_path):
         missing = await client.get("/assets/secret.txt")
     assert css.status_code == 200
     assert "text/css" in css.headers["content-type"]
+    assert css.headers["cache-control"] == "no-store"
     assert javascript.status_code == 200
+    assert javascript.headers["cache-control"] == "no-store"
     assert "Authorization" not in javascript.text
     assert "saveToken" not in javascript.text
     assert icon.status_code == 200

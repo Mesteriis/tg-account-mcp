@@ -5,6 +5,13 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-09-23
+
+### Fixed
+
+- Version dashboard stylesheet and script URLs and serve static assets with `no-store`, preventing
+  stale JavaScript from running against updated HTML after a deployment.
+
 ## [0.6.0] - 2026-09-23
 
 ### Changed

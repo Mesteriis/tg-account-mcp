@@ -6,8 +6,8 @@ MCP Registry. Its canonical source is <https://github.com/Mesteriis/tg-account-m
 ## 1. Public repository and release channels
 
 As verified on 2026-09-23, the repository is public at
-<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.6.0` is published through GitHub Releases,
-PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.6.0`, and the official MCP Registry under
+<https://github.com/Mesteriis/tg-account-mcp>. Release `v0.6.1` is published through GitHub Releases,
+PyPI, `ghcr.io/mesteriis/tg-account-mcp:0.6.1`, and the official MCP Registry under
 `io.github.Mesteriis/tg-account-mcp`.
 
 Keep these repository settings enabled:

@@ -8,9 +8,9 @@ Python 3.12, UID/GID 10001.
 | `uv run ruff check .` | PASS |
 | `uv run ruff format --check .` | PASS, 51 files |
 | `uv run pytest -q` | PASS, 130 tests |
-| `uv build` | PASS, wheel and source distribution built for 0.6.0 |
+| `uv build` | PASS, wheel and source distribution built for 0.6.1 |
 | `TG_MCP_DOMAIN=mcp.example.test docker compose config --quiet` | PASS |
-| `docker build -t tg-account-mcp:0.6.0-rc .` | PASS |
+| `docker build -t tg-account-mcp:0.6.1-rc .` | PASS |
 | Tool catalog comparison | PASS, 44 implementation tools and 44 documented tools; no differences |
 | Local Markdown link check | PASS |
 
@@ -34,6 +34,6 @@ service and listed all 44 tools. Dashboard authentication changes do not alter M
 authentication. No account names, tokens, session data, message content, or Telegram credentials
 were recorded.
 
-The 0.6.0 candidate passed local release checks on 2026-09-23. Publication status is verified after
+The 0.6.1 candidate passed local release checks on 2026-09-23. Publication status is verified after
 the release workflow finishes; the official MCP Registry name remains the case-sensitive
 `io.github.Mesteriis/tg-account-mcp`.

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 
+from tg_mcp import __version__
 from tg_mcp.config import Settings
 from tg_mcp.server import create_app
 
@@ -98,6 +99,8 @@ async def test_page_is_public_and_has_safe_headers(tmp_path):
     assert response.headers["cache-control"] == "no-store"
     assert "default-src 'none'" in response.headers["content-security-policy"]
     assert "TG MCP" in response.text
+    assert 'id="versionLabel"' in response.text
+    assert "v0.2.0" not in response.text
     assert "QR → 2FA" in response.text
     assert "accountLabel" not in response.text
     assert "/assets/app.css" in response.text
@@ -114,6 +117,7 @@ async def test_remote_setup_requires_bearer(tmp_path):
             headers={"Authorization": f"Bearer {TOKEN}", "Origin": "https://mcp.test"},
         )
     assert response.status_code == 200
+    assert response.json()["version"] == __version__
     assert response.json()["accounts"][0]["qr_data_url"].startswith("data:image/svg+xml")
     assert response.json()["analytics"]["totals"]["requests"] == 0
     assert len(response.json()["analytics"]["hourly_series"]) == 24

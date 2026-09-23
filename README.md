@@ -49,6 +49,16 @@ Docker and a domain are required only for the Compose deployment.
 
 ## Quick start
 
+Install the published package:
+
+```sh
+uv tool install tg-account-mcp
+tg-mcp setup
+TG_MCP_PORT=8765 tg-mcp serve
+```
+
+For development from a source checkout:
+
 ```sh
 uv sync --frozen
 uv run tg-mcp setup
@@ -148,6 +158,24 @@ separate token for each agent and restrict it by:
 Only a SHA-256 hash of an agent token is retained, and the plaintext token is returned once.
 Revoke access with `revoke_agent_token`. A chat-limited token cannot use aggregate inbox, folder,
 or global-search tools because those operations could reveal neighboring chats.
+
+## Direct LAN deployment
+
+For a trusted private network without the Compose HTTPS proxy, bind the service to the LAN and
+allow the dashboard's exact browser origin:
+
+```sh
+TG_MCP_BIND=0.0.0.0 \
+TG_MCP_PORT=8765 \
+TG_MCP_ALLOWED_ORIGINS=http://192.168.1.50:8765 \
+tg-mcp serve
+```
+
+Replace `192.168.1.50` with the server's LAN address. Remote dashboard data and mutations still
+require the administrative Bearer token. Without the exact Origin entry, safe reads that omit an
+Origin header may work while browser actions such as adding, renaming, disabling, or enabling an
+identity return `403 forbidden`. Permit TCP `8765` and discovery UDP `38475` only from trusted
+networks. Prefer the Compose HTTPS deployment when traffic crosses an untrusted network.
 
 ## Docker Compose deployment
 

@@ -1305,4 +1305,5 @@ def create_app(
         settings.allowed_hosts,
         settings.allowed_origins,
         scoped_token_resolver=access_store.verify,
+        trusted_networks=settings.trusted_networks,
     )

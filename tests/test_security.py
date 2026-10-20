@@ -61,27 +61,40 @@ async def test_allowed_origin(client):
     assert response.status_code == 204
 
 
-async def test_loopback_setup_accepts_its_own_browser_origin():
+async def test_setup_api_accepts_same_origin_browser_without_token():
     app = BearerAuth(
         downstream,
         TOKEN,
-        ["127.0.0.1:8765"],
+        ["mcp.test"],
         [],
-        bind_host="127.0.0.1",
     )
-    transport = httpx.ASGITransport(app, client=("127.0.0.1", 50000))
-    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8765") as local:
-        response = await local.post(
+    transport = httpx.ASGITransport(app, client=("192.0.2.10", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="https://mcp.test") as remote:
+        status = await remote.get("/setup/api/status")
+        response = await remote.post(
             "/setup/api/accounts/example/password",
-            headers={"Origin": "http://127.0.0.1:8765"},
+            headers={"Origin": "https://mcp.test"},
         )
-        rejected = await local.post(
+        rejected = await remote.post(
             "/setup/api/accounts/example/password",
             headers={"Origin": "https://evil.test"},
         )
 
+    assert status.status_code == 204
     assert response.status_code == 204
     assert rejected.status_code == 403
+
+
+async def test_setup_api_accepts_configured_separate_frontend_origin():
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], ["https://dashboard.test"])
+    transport = httpx.ASGITransport(app, client=("192.0.2.10", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="https://mcp.test") as remote:
+        response = await remote.post(
+            "/setup/api/accounts",
+            headers={"Origin": "https://dashboard.test"},
+        )
+
+    assert response.status_code == 204
 
 
 async def test_lifespan_passthrough():

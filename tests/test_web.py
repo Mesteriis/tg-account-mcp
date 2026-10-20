@@ -33,6 +33,14 @@ def test_2fa_wizard_explains_password_and_allows_restart():
     assert "Начать заново" in script
 
 
+def test_account_cards_offer_confirmed_deletion():
+    script = (Path(__file__).parents[1] / "src/tg_mcp/static/app.js").read_text()
+
+    assert "Удалить аккаунт" in script
+    assert "window.confirm" in script
+    assert "method: 'DELETE'" in script
+
+
 def test_chart_wave_animation_is_bounded_and_respects_reduced_motion():
     script = (Path(__file__).parents[1] / "src/tg_mcp/static/app.js").read_text()
 
@@ -57,6 +65,7 @@ class FakeManager:
         )
         self.rename_account = AsyncMock(return_value={"account_id": ACCOUNT, "label": "New"})
         self.set_account_enabled = AsyncMock(return_value={"account_id": ACCOUNT, "enabled": False})
+        self.delete_account = AsyncMock(return_value={"account_id": ACCOUNT, "deleted": True})
         self.add_bot = AsyncMock(return_value={"bot_id": BOT, "label": "Helper", "status": "ready"})
         self.rename_bot = AsyncMock(return_value={"bot_id": BOT, "label": "New"})
         self.set_bot_enabled = AsyncMock(return_value={"bot_id": BOT, "enabled": False})
@@ -103,19 +112,17 @@ async def test_page_is_public_and_has_safe_headers(tmp_path):
     assert "v0.2.0" not in response.text
     assert "QR → 2FA" in response.text
     assert "accountLabel" not in response.text
-    assert "/assets/app.css" in response.text
+    assert 'id="saveToken"' not in response.text
+    assert 'id="token"' not in response.text
+    assert f"/assets/app.css?v={__version__}" in response.text
+    assert f"/assets/app.js?v={__version__}" in response.text
 
 
-async def test_remote_setup_requires_bearer(tmp_path):
+async def test_remote_setup_is_available_without_bearer(tmp_path):
     application, _ = app(tmp_path, host="0.0.0.0")
     transport = httpx.ASGITransport(application, client=("203.0.113.9", 50000))
     async with httpx.AsyncClient(transport=transport, base_url="https://mcp.test") as client:
         response = await client.get("/setup/api/status")
-        assert response.status_code == 401
-        response = await client.get(
-            "/setup/api/status",
-            headers={"Authorization": f"Bearer {TOKEN}", "Origin": "https://mcp.test"},
-        )
     assert response.status_code == 200
     assert response.json()["version"] == __version__
     assert response.json()["accounts"][0]["qr_data_url"].startswith("data:image/svg+xml")
@@ -128,23 +135,29 @@ async def test_static_assets_are_local_and_allowlisted(tmp_path):
     transport = httpx.ASGITransport(application, client=("127.0.0.1", 50000))
     async with httpx.AsyncClient(transport=transport, base_url="https://mcp.test") as client:
         css = await client.get("/assets/app.css")
+        javascript = await client.get("/assets/app.js")
         icon = await client.get("/assets/icon-house.svg")
         missing = await client.get("/assets/secret.txt")
     assert css.status_code == 200
     assert "text/css" in css.headers["content-type"]
+    assert css.headers["cache-control"] == "no-store"
+    assert javascript.status_code == 200
+    assert javascript.headers["cache-control"] == "no-store"
+    assert "Authorization" not in javascript.text
+    assert "saveToken" not in javascript.text
     assert icon.status_code == 200
     assert "image/svg+xml" in icon.headers["content-type"]
     assert missing.status_code == 404
 
 
-async def test_loopback_setup_bypasses_token_only_for_loopback_client(tmp_path):
+async def test_setup_status_is_available_to_local_and_remote_clients(tmp_path):
     application, _ = app(tmp_path, host="127.0.0.1")
     local = httpx.ASGITransport(application, client=("127.0.0.1", 50000))
     remote = httpx.ASGITransport(application, client=("192.0.2.10", 50000))
     async with httpx.AsyncClient(transport=local, base_url="https://mcp.test") as client:
         assert (await client.get("/setup/api/status")).status_code == 200
     async with httpx.AsyncClient(transport=remote, base_url="https://mcp.test") as client:
-        assert (await client.get("/setup/api/status")).status_code == 401
+        assert (await client.get("/setup/api/status")).status_code == 200
 
 
 async def test_account_and_bot_actions_and_body_limit(tmp_path):
@@ -163,6 +176,9 @@ async def test_account_and_bot_actions_and_body_limit(tmp_path):
         assert response.status_code == 201
         response = await client.patch(f"/setup/api/accounts/{ACCOUNT}", json={"enabled": False})
         assert response.status_code == 200
+        response = await client.delete(f"/setup/api/accounts/{ACCOUNT}")
+        assert response.status_code == 200
     manager.add_account.assert_awaited_once_with()
     manager.add_bot.assert_awaited_once()
     manager.set_account_enabled.assert_awaited_once_with(ACCOUNT, False)
+    manager.delete_account.assert_awaited_once_with(ACCOUNT)

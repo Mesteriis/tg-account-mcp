@@ -45,6 +45,19 @@ def test_labels_are_unique_per_identity_kind(tmp_path):
         catalog.add_account("\n")
 
 
+def test_remove_account_persists_catalog_change(tmp_path):
+    store = StateStore(tmp_path / "state")
+    store.save(credentials())
+    catalog = IdentityCatalog.load(store, store.load())
+    removed = catalog.add_account("Old")
+    kept = catalog.add_account("Keep")
+
+    assert catalog.remove_account(removed.account_id) == removed
+    assert [item.account_id for item in store.load_identities().accounts] == [kept.account_id]
+    with pytest.raises(LocalError, match="not found"):
+        catalog.remove_account(removed.account_id)
+
+
 def test_legacy_session_and_bot_migrate_once(tmp_path):
     store = StateStore(tmp_path / "state")
     store.save(credentials(bot=True))

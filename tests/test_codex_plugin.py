@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+from tg_mcp import __version__
+
 ROOT = Path(__file__).parents[1]
 PLUGIN_ROOT = ROOT / "plugins" / "tg-account-mcp"
 
@@ -28,7 +30,7 @@ def test_codex_plugin_uses_discovery_bridge_without_embedding_a_token() -> None:
     assert server["command"] == "uvx"
     assert server["args"] == [
         "--from",
-        "tg-account-mcp==0.5.2",
+        f"tg-account-mcp=={__version__}",
         "tg-mcp",
         "bridge",
     ]

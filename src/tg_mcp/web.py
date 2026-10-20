@@ -26,7 +26,11 @@ SECURITY_HEADERS = {
 }
 
 STATIC_ROOT = Path(__file__).with_name("static")
-PAGE = (STATIC_ROOT / "index.html").read_text(encoding="utf-8")
+PAGE = (
+    (STATIC_ROOT / "index.html")
+    .read_text(encoding="utf-8")
+    .replace("__TG_MCP_VERSION__", __version__)
+)
 
 
 class LabelBody(BaseModel):
@@ -86,7 +90,10 @@ def setup_routes(manager, telemetry) -> list[Route]:
         is_icon = name.startswith("icon-") and name.endswith(".svg")
         if name not in allowed and not (is_icon and (STATIC_ROOT / name).is_file()):
             return Response(status_code=404, headers=SECURITY_HEADERS)
-        return FileResponse(STATIC_ROOT / name, headers={"X-Content-Type-Options": "nosniff"})
+        return FileResponse(
+            STATIC_ROOT / name,
+            headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        )
 
     async def status(request: Request) -> Response:
         accounts = [manager.login_state(row["account_id"]) for row in manager.list_accounts()]
@@ -137,6 +144,13 @@ def setup_routes(manager, telemetry) -> list[Route]:
         except GatewayError as exc:
             return _json({"error": exc.as_dict()}, 400)
 
+    async def account_delete(request: Request) -> Response:
+        try:
+            return _json(await manager.delete_account(request.path_params["account_id"]))
+        except GatewayError as exc:
+            code = 404 if exc.code == "identity_not_found" else 400
+            return _json({"error": exc.as_dict()}, code)
+
     async def bots(request: Request) -> Response:
         try:
             body = await _body(request, BotBody)
@@ -171,6 +185,7 @@ def setup_routes(manager, telemetry) -> list[Route]:
             methods=["POST"],
         ),
         Route("/setup/api/accounts/{account_id:str}", account_patch, methods=["PATCH"]),
+        Route("/setup/api/accounts/{account_id:str}", account_delete, methods=["DELETE"]),
         Route("/setup/api/bots", bots, methods=["POST"]),
         Route("/setup/api/bots/{bot_id:str}", bot_patch, methods=["PATCH"]),
     ]

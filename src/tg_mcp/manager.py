@@ -338,6 +338,21 @@ class IdentityManager:
                 await self._connect_existing(account, runtime)
             return self._account_view(account)
 
+    async def delete_account(self, account_id: str) -> dict:
+        async with self._mutation_lock:
+            account = self._account(account_id)
+            runtime = self._accounts.pop(account_id, None)
+            if runtime:
+                await self._cancel_login(runtime)
+                with contextlib.suppress(Exception):
+                    await runtime.client.disconnect()
+            try:
+                self.catalog.remove_account(account_id)
+                self.store.delete_account_session(account_id)
+            except (LocalError, OSError) as exc:
+                raise GatewayError("unavailable", "Unable to delete account identity.") from exc
+            return {"account_id": account.account_id, "deleted": True}
+
     async def rename_account(self, account_id: str, label: str) -> dict:
         async with self._mutation_lock:
             current = self._account(account_id)

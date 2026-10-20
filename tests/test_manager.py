@@ -197,6 +197,24 @@ async def test_disable_is_scoped_to_one_account(manager):
     assert (await value.user_gateway(second["account_id"])).identity_id == second["account_id"]
 
 
+async def test_delete_account_disconnects_and_removes_session(manager):
+    value, clients = manager
+    await value.start()
+    account = await value.add_account("Disposable")
+    await wait_for_state(value, account["account_id"], "waiting_qr")
+    session = value.store.prepare_session(value.store.account_session_path(account["account_id"]))
+    session.write_bytes(b"session")
+
+    result = await value.delete_account(account["account_id"])
+
+    assert result == {"account_id": account["account_id"], "deleted": True}
+    assert value.list_accounts() == []
+    assert not session.exists()
+    clients[0].disconnect.assert_awaited()
+    with pytest.raises(GatewayError, match="identity_not_found"):
+        value.login_state(account["account_id"])
+
+
 async def test_missing_id_is_safe(manager):
     value, _ = manager
     await value.start()

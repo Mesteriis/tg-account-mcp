@@ -2,6 +2,11 @@
 
 <!-- mcp-name: io.github.Mesteriis/tg-account-mcp -->
 
+[![CI](https://github.com/Mesteriis/tg-account-mcp/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/Mesteriis/tg-account-mcp/actions/workflows/ci.yml?query=branch%3Amain)
+[![PyPI](https://img.shields.io/pypi/v/tg-account-mcp)](https://pypi.org/project/tg-account-mcp/)
+[![Python](https://img.shields.io/pypi/requires-python/tg-account-mcp)](https://pypi.org/project/tg-account-mcp/)
+[![License](https://img.shields.io/github/license/Mesteriis/tg-account-mcp)](LICENSE)
+
 [![TG multi-account MCP server](https://mcprush.com/badge/tg-multi-account-mcp/card.svg)](https://mcprush.com/to/tg-multi-account-mcp?ref=badge)
 
 [Русская документация](README.ru.md)

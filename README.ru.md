@@ -1,5 +1,7 @@
 # TG multi-account MCP
 
+[![TG multi-account MCP server](https://mcprush.com/badge/tg-multi-account-mcp/card.svg)](https://mcprush.com/to/tg-multi-account-mcp?ref=badge)
+
 [English documentation](README.md)
 
 Приватный MCP-сервер для нескольких Telegram-аккаунтов и нескольких опциональных ботов. Владелец запускает сервис, открывает веб-страницу, добавляет аккаунты по QR и при необходимости вводит пароль Telegram 2FA. Подключённые агенты читают облачную историю и отправляют текст через явно выбранный `account_id` или `bot_id`.

@@ -2,6 +2,8 @@
 
 <!-- mcp-name: io.github.Mesteriis/tg-account-mcp -->
 
+[![TG multi-account MCP server](https://mcprush.com/badge/tg-multi-account-mcp/card.svg)](https://mcprush.com/to/tg-multi-account-mcp?ref=badge)
+
 [Русская документация](README.ru.md)
 
 A self-hosted [Model Context Protocol](https://modelcontextprotocol.io/) server that lets

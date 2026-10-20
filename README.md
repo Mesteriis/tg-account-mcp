@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/Mesteriis/tg-account-mcp/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/Mesteriis/tg-account-mcp/actions/workflows/ci.yml?query=branch%3Amain)
 [![PyPI](https://img.shields.io/pypi/v/tg-account-mcp)](https://pypi.org/project/tg-account-mcp/)
-[![Python](https://img.shields.io/pypi/requires-python/tg-account-mcp)](https://pypi.org/project/tg-account-mcp/)
+[![Python](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fpypi.org%2Fpypi%2Ftg-account-mcp%2Fjson&query=%24.info.requires_python&label=Python&color=blue)](https://pypi.org/project/tg-account-mcp/)
 [![License](https://img.shields.io/github/license/Mesteriis/tg-account-mcp)](LICENSE)
 
 [![TG multi-account MCP server](https://mcprush.com/badge/tg-multi-account-mcp/card.svg)](https://mcprush.com/to/tg-multi-account-mcp?ref=badge)

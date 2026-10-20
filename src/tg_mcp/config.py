@@ -2,6 +2,7 @@
 
 import os
 import re
+from ipaddress import ip_network
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -48,6 +49,7 @@ class Settings(BaseModel):
     port: int = Field(default=8000, ge=1, le=65535)
     allowed_hosts: list[str] = Field(min_length=1)
     allowed_origins: list[str] = Field(default_factory=list)
+    trusted_networks: list[str] = Field(default_factory=list)
     discovery_enabled: bool = False
     discovery_port: int = Field(default=DISCOVERY_PORT, ge=1, le=65535)
     discovery_url: str | None = None
@@ -58,6 +60,17 @@ class Settings(BaseModel):
         if any(not v or "*" in v or any(c.isspace() for c in v) for v in values):
             raise ValueError("Host and Origin allowlists must contain exact values")
         return values
+
+    @field_validator("trusted_networks")
+    @classmethod
+    def private_trusted_networks(cls, values: list[str]) -> list[str]:
+        networks = []
+        for value in values:
+            network = ip_network(value, strict=True)
+            if not network.is_private:
+                raise ValueError("Trusted networks must be private LAN CIDRs")
+            networks.append(str(network))
+        return networks
 
     @field_validator("discovery_url")
     @classmethod
@@ -100,6 +113,7 @@ class Settings(BaseModel):
             port=port,
             allowed_hosts=allowed_hosts,
             allowed_origins=csv("TG_MCP_ALLOWED_ORIGINS", ""),
+            trusted_networks=csv("TG_MCP_TRUSTED_NETWORKS", ""),
             discovery_enabled=discovery_enabled,
             discovery_port=int(os.environ.get("TG_MCP_DISCOVERY_PORT", str(DISCOVERY_PORT))),
             discovery_url=discovery_url,

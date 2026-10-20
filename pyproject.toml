@@ -21,7 +21,7 @@ classifiers = [
   "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
 ]
 dependencies = [
-  "mcp==2.2.0",
+  "mcp==2.3.0",
   "telethon==1.45.0",
   "httpx==0.28.1",
   "pydantic>=2.13.5,<3",

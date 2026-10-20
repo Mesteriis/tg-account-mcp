@@ -41,6 +41,54 @@ async def test_valid_and_invalid_token(client):
         assert TOKEN not in response.text
 
 
+@pytest.mark.parametrize("path", ["/mcp", "/mcp/stream"])
+async def test_trusted_lan_can_access_mcp_without_token(path):
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], [], trusted_networks=["10.34.10.0/24"])
+    transport = httpx.ASGITransport(app, client=("10.34.10.23", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp.test") as client:
+        response = await client.post(path)
+
+    assert response.status_code == 204
+
+
+@pytest.mark.parametrize("client_ip", ["10.34.11.23", "192.168.1.10", "203.0.113.2"])
+async def test_untrusted_client_still_requires_token(client_ip):
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], [], trusted_networks=["10.34.10.0/24"])
+    transport = httpx.ASGITransport(app, client=(client_ip, 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp.test") as client:
+        response = await client.post("/mcp")
+
+    assert response.status_code == 401
+
+
+async def test_trusted_lan_bypass_does_not_apply_to_other_routes():
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], [], trusted_networks=["10.34.10.0/24"])
+    transport = httpx.ASGITransport(app, client=("10.34.10.23", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp.test") as client:
+        response = await client.post("/admin")
+
+    assert response.status_code == 401
+
+
+async def test_trusted_lan_bypass_fails_closed_without_peer_address():
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], [], trusted_networks=["10.34.10.0/24"])
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app, client=None), base_url="http://mcp.test"
+    ) as client:
+        response = await client.post("/mcp")
+
+    assert response.status_code == 401
+
+
+async def test_invalid_credentials_do_not_fall_back_to_lan_bypass():
+    app = BearerAuth(downstream, TOKEN, ["mcp.test"], [], trusted_networks=["10.34.10.0/24"])
+    transport = httpx.ASGITransport(app, client=("10.34.10.23", 50000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://mcp.test") as client:
+        response = await client.post("/mcp", headers={"Authorization": "Bearer wrong"})
+
+    assert response.status_code == 401
+
+
 async def test_duplicate_credentials_are_rejected(client):
     response = await client.post("/mcp", headers=[("Authorization", f"Bearer {TOKEN}")] * 2)
     assert response.status_code == 401

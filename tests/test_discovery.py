@@ -99,6 +99,18 @@ def test_settings_enable_loopback_discovery_by_default(tmp_path, monkeypatch) ->
     assert settings.discovery_enabled
 
 
+def test_settings_parse_private_trusted_networks(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TG_MCP_TRUSTED_NETWORKS", "10.34.10.0/24")
+    assert Settings.from_env(tmp_path).trusted_networks == ["10.34.10.0/24"]
+
+
+@pytest.mark.parametrize("network", ["0.0.0.0/0", "8.8.8.0/24", "10.34.10.1/24", "bad"])
+def test_settings_reject_unsafe_or_noncanonical_trusted_networks(tmp_path, monkeypatch, network):
+    monkeypatch.setenv("TG_MCP_TRUSTED_NETWORKS", network)
+    with pytest.raises(ValueError):
+        Settings.from_env(tmp_path)
+
+
 def test_scoped_agent_digest_can_authenticate_discovery(tmp_path) -> None:
     store = StateStore(tmp_path / "private")
     access = AgentAccessStore(store)

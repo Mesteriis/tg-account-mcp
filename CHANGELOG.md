@@ -5,6 +5,15 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-18
+
+### Added
+
+- Optionally allow unauthenticated MCP requests from explicitly configured private LAN CIDRs.
+  The opt-in bypass applies only to `/mcp` and uses the direct TCP peer address; all access is
+  master-level, while requests with invalid credentials and clients outside those networks remain
+  rejected.
+
 ## [0.7.0] - 2026-09-23
 
 ### Added

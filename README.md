@@ -170,8 +170,14 @@ start it on the LAN:
 ```sh
 TG_MCP_BIND=0.0.0.0 \
 TG_MCP_PORT=8765 \
+TG_MCP_TRUSTED_NETWORKS=192.168.1.0/24 \
 tg-mcp serve
 ```
+
+`TG_MCP_TRUSTED_NETWORKS` is optional and defaults to empty. When set to private CIDR ranges,
+clients whose direct TCP peer address is in one of those ranges can use `/mcp` without a Bearer
+token. This grants full administrative MCP access to every device in those ranges. Do not expose
+the service beyond the trusted LAN; forwarded client-address headers are not used for this check.
 
 Open the server's LAN address in a browser. The dashboard does not ask for a token, so every user
 who can reach it can view its metadata and manage Telegram identities. Same-origin browser requests
@@ -209,7 +215,8 @@ replica per state volume.
 - Symlinks, hard-linked sensitive files, foreign ownership, and broad permissions are rejected.
 - The web UI has no third-party scripts, fonts, analytics, or remote assets.
 - Dashboard account data and setup APIs are available without a token to clients that can reach
-  the server; the MCP endpoint always requires a Bearer token.
+  the server. The MCP endpoint requires a Bearer token unless an operator explicitly configures
+  `TG_MCP_TRUSTED_NETWORKS`; that opt-in grants full MCP access to clients in those private CIDRs.
 - Host and Origin values are checked against exact allowlists; wildcards are rejected.
 - Logs and operations history omit message bodies, search terms, credentials, QR URLs, and 2FA
   passwords.

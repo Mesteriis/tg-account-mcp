@@ -2,6 +2,7 @@
 
 import secrets
 from collections.abc import Callable
+from ipaddress import ip_address, ip_network
 
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -18,12 +19,27 @@ class BearerAuth:
         origins: list[str],
         *,
         scoped_token_resolver: Callable[[str], AccessPolicy | None] | None = None,
+        trusted_networks: list[str] | None = None,
     ):
         self.app = app
         self._token = token.encode("ascii")
         self.hosts = {host.lower().encode("ascii") for host in hosts}
         self.origins = {origin.encode("ascii") for origin in origins}
         self.scoped_token_resolver = scoped_token_resolver
+        self.trusted_networks = tuple(ip_network(value) for value in trusted_networks or [])
+
+    def _is_trusted_client(self, scope: Scope) -> bool:
+        client = scope.get("client")
+        if not client:
+            return False
+        try:
+            address = ip_address(client[0])
+        except (ValueError, TypeError):
+            return False
+        return any(
+            address.version == network.version and address in network
+            for network in self.trusted_networks
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
@@ -70,6 +86,13 @@ class BearerAuth:
                     policy = self.scoped_token_resolver(token.decode("ascii"))
                 except (UnicodeDecodeError, ValueError):
                     policy = None
+        if (
+            policy is None
+            and not authorization
+            and (path == "/mcp" or path.startswith("/mcp/"))
+            and self._is_trusted_client(scope)
+        ):
+            policy = MASTER_ACCESS
         if policy is None:
             await JSONResponse(
                 {"error": "unauthorized"},

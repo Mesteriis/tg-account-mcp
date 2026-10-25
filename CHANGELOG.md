@@ -5,6 +5,7 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+- Retry each account independently of other accounts’ long-running history passes.
 - Add a RAG dashboard page with history coverage, current-model text queue, errors and account pacing.
 - Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,
   and gradually recover after two hours of active successful loading (archive schema 4).

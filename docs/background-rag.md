@@ -56,7 +56,9 @@ cooldowns survive restarts. This reduces repeated limits; Telegram may still imp
 
 History pages request 99 visible messages plus one pagination item to stay within Telethon's
 100-message native page. Dialog enumeration paces native pages. Accounts advance independently and a
-paused account is skipped while others proceed. Local embeddings and live event capture continue.
+paused account is skipped while others proceed. Each account has its own pass task; the scheduler
+checks completed passes and newly connected accounts every 60 seconds without waiting for other
+accounts to finish their histories. Local embeddings and live event capture continue.
 Scheduled waits (`load_paused`) are distinct from new Telegram limits and are not chat errors.
 
 ## Progress and operator controls

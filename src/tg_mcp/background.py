@@ -62,7 +62,8 @@ class BackgroundRAG:
                 await gateway.discover_archives()
                 self._discovery_errors.pop(account, None)
             except GatewayError as exc:
-                self._discovery_errors[account] = exc.code
+                if exc.code != "load_paused":
+                    self._discovery_errors[account] = exc.code
                 self._retry[account] = monotonic() + max(60, exc.retry_after or 0)
         ready = self.ready_accounts()
         self._discovery_errors = {
@@ -147,15 +148,26 @@ class BackgroundRAG:
                 delay = max(delay, min(300, 5 * 2 ** min(failures, 6)))
             await asyncio.sleep(delay)
 
-    def status(self):
+    def status(self, *, details=False):
         with self.archive.connect() as db:
-            chats = db.execute("SELECT count(*) FROM chats WHERE enabled=1").fetchone()[0]
-            messages = db.execute(
-                "SELECT count(*) FROM messages WHERE deleted_at IS NULL"
-            ).fetchone()[0]
-            vectors = db.execute(
-                "SELECT count(*) FROM message_vectors WHERE model=?", (self.model_key,)
-            ).fetchone()[0]
+            rows = db.execute(
+                "SELECT c.account,c.chat,c.title,c.backfill_complete,c.last_sync,c.error,"
+                "count(m.rowid) AS archived,"
+                "sum(CASE WHEN trim(m.text,?)!='' THEN 1 ELSE 0 END) AS eligible,"
+                "sum(CASE WHEN trim(m.text,?)!='' AND v.message IS NOT NULL "
+                "THEN 1 ELSE 0 END) AS indexed "
+                "FROM chats c LEFT JOIN messages m ON m.account=c.account AND m.chat=c.chat "
+                "AND m.deleted_at IS NULL LEFT JOIN message_vectors v "
+                "ON v.message=m.rowid AND v.model=? WHERE c.enabled=1 "
+                "GROUP BY c.account,c.chat ORDER BY c.account,c.title,c.chat",
+                (WHITESPACE, WHITESPACE, self.model_key),
+            ).fetchall()
+            loading = [dict(row) for row in db.execute("SELECT * FROM rag_loading")]
+        chat_details = [dict(row) for row in rows]
+        chats = len(chat_details)
+        messages = sum(row["archived"] for row in chat_details)
+        vectors = sum(row["indexed"] for row in chat_details)
+        eligible = sum(row["eligible"] for row in chat_details)
         return {
             "enabled": True,
             "running": bool(self.tasks) and all(not t.done() for t in self.tasks),
@@ -164,6 +176,15 @@ class BackgroundRAG:
             "archived_messages": messages,
             "indexed_messages": vectors,
             "indexed_this_process": self.indexed,
+            "eligible_messages": eligible,
+            "pending_messages": eligible - vectors if self.model_key else None,
+            "history_complete_chats": sum(row["backfill_complete"] for row in chat_details),
+            "never_synced_chats": sum(row["last_sync"] is None for row in chat_details),
+            "chat_errors": sum(bool(row["error"]) for row in chat_details),
+            **({"chats": chat_details} if details else {}),
+            "loading": loading,
+            "embedding_model": self.settings.embedding_model,
+            "observed_at": now(),
             "last_discovery": self.last_discovery,
             "last_index": self.last_index,
             "last_error": self.errors["index"] or self.errors["discovery"],

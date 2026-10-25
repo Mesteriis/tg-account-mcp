@@ -74,3 +74,28 @@ button{cursor:pointer}
 @media(max-width:1180px){.health-grid{grid-template-columns:repeat(2,1fr)}.health-card:nth-child(2){border-right:0}.health-card:nth-child(-n+2){border-bottom:1px solid var(--border)}.analytics-grid{grid-template-columns:1fr}.chart-panel,.usage-panel{height:auto}.usage-list{grid-template-columns:repeat(4,1fr);gap:12px}.usage-list>div{border:0}.identity-strip,.cards-grid{grid-template-columns:repeat(2,1fr)}.chart-wrap{height:270px}}
 @media(max-width:900px){.app-shell{grid-template-columns:1fr}.sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform .2s;width:240px}.sidebar.open{transform:translateX(0)}.sidebar-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:19}.mobile-menu{display:grid}.topbar{padding-left:14px}.top-actions{gap:12px}.service-state{display:none}.view{padding:12px}.table-toolbar{flex-wrap:wrap}.search{width:100%;min-width:0}.settings-grid{grid-template-columns:1fr}}
 @media(max-width:680px){.topbar{align-items:center}.page-heading p{display:none}.top-actions .button{width:38px;padding:0;font-size:0}.top-actions .button i{font-size:17px}.health-grid{grid-template-columns:1fr}.health-card{border-right:0;border-bottom:1px solid var(--border)}.health-card:last-child{border-bottom:0}.chart-panel{height:340px}.panel-head{align-items:flex-start}.chart-tools{align-items:flex-end;flex-direction:column;gap:9px}.legend{display:none}.chart-wrap{height:266px}.usage-list{grid-template-columns:repeat(2,1fr)}.identity-strip,.cards-grid{grid-template-columns:1fr}.table-toolbar select{flex:1}.wizard-card{grid-template-columns:1fr}.wizard-visual{min-height:200px}.wizard-visual img{width:190px;height:190px}.form-grid{grid-template-columns:1fr}.settings-grid{grid-template-columns:1fr}.section-head{align-items:center}.section-head p{max-width:360px}.setting-card{grid-template-columns:40px 1fr}.large-icon{width:40px;height:40px}}
+
+/* RAG extends the dashboard's existing panels and table system. */
+.rag-state{font-size:14px;line-height:1.6;margin:0 0 20px;color:var(--text)}
+.rag-warning{color:#f4c876!important}
+.rag-progress{padding:24px;margin-bottom:24px}
+.rag-progress h2{font-size:18px;margin:0 0 12px}
+.rag-progress h2:not(:first-child){margin-top:28px}
+.rag-progress p{font-size:14px;line-height:1.65;margin:8px 0}
+.rag-muted{color:#aebbd0}
+.rag-progress progress{width:100%;height:10px;margin:12px 0;accent-color:#7698ff}
+.rag-panel{margin-bottom:24px}
+.rag-panel td{font-size:13px;white-space:normal;vertical-align:top}
+.rag-panel td:first-child{max-width:290px;overflow-wrap:anywhere}
+.rag-panel td small{display:block;color:#aebbd0;font-size:12px;margin-top:5px}
+.rag-panel .panel-head p{max-width:640px;line-height:1.6}
+.rag-filter{display:flex;gap:10px;align-items:center;font-size:13px}
+.rag-filter select{background:#17243b;color:#e7edf8;border:1px solid #42536c;border-radius:6px;padding:8px;max-width:220px}
+@media(max-width:680px){.rag-progress{padding:18px}.rag-panel .panel-head{align-items:flex-start;flex-direction:column;gap:16px}.rag-filter{flex-wrap:wrap}.rag-filter select{max-width:100%}}
+.rag-panel .panel-head{padding:20px 24px}
+.rag-panel .panel-head h2{font-size:18px}
+.rag-panel .panel-head p{font-size:13px;color:#aebbd0}
+.rag-panel .table-wrap{min-height:0}
+.rag-panel th{font-size:12px;color:#aebbd0}
+.rag-panel td{padding:12px 14px;line-height:1.5}
+@media(max-width:680px){.rag-panel .panel-head{padding:18px}}

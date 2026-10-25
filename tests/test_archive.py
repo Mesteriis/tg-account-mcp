@@ -198,10 +198,12 @@ async def test_gateway_sync_resume_events_and_error_status(archive):
         await restarted.sync_archive_chat("123")
     assert archive.status(A, "123")["error"] == "rate_limited"
     restarted.history.reset_mock()
-    with pytest.raises(GatewayError, match="rate_limited"):
+    with pytest.raises(GatewayError, match="load_paused"):
         await restarted.sync_archive_chat("123", restart=True)
     restarted.history.assert_not_awaited()
-    restarted._archive_retry_until = 0
+    state = restarted.loading.state()
+    state["cooldown_until"] = state["next_request"] = 0
+    restarted.loading.save(state)
     restarted.history.side_effect = None
     await restarted.sync_archive_chat("123", restart=True)
     assert restarted.history.call_args.kwargs["cursor"] is None

@@ -45,7 +45,29 @@ readiness probe every five minutes refreshes the model cache. This does not rese
 GPU capacity: the inference host may evict the model or become unavailable. Cold starts and
 resource contention can still produce explicit errors; no cloud/keyword fallback is implicit.
 
+## Adaptive Telegram loading
+
+History and dialog discovery share a persistent per-account loading gate. The minimum interval
+is 2 seconds. A Telegram FloodWait doubles it, up to 60 seconds, and the server's requested pause
+is always respected even when longer than that cap. After two hours of successful activity without
+another limit, the interval decreases by 20%, down to the minimum. Gaps longer than ten minutes
+restart that stability window, so idle time does not count as successful loading. Intervals and
+cooldowns survive restarts. This reduces repeated limits; Telegram may still impose new limits.
+
+History pages request 99 visible messages plus one pagination item to stay within Telethon's
+100-message native page. Dialog enumeration paces native pages. Accounts advance independently and a
+paused account is skipped while others proceed. Local embeddings and live event capture continue.
+Scheduled waits (`load_paused`) are distinct from new Telegram limits and are not chat errors.
+
 ## Progress and operator controls
+
+The dashboard has a separate **RAG** page (`/#rag`), refreshed every four seconds. It shows history
+coverage by chat, current-model eligible/indexed/pending text counts, worker errors, per-chat errors,
+and each account's current interval, Telegram cooldown and last limit. Empty/media-only messages
+are excluded from the text queue. Total remaining Telegram messages and a global ETA are unknown
+until histories are loaded. A failed refresh marks the last displayed snapshot as stale. Detailed
+chat rows are supplied only to the dashboard; the MCP status tool remains compact.
+
 
 `get_background_rag_status` requires admin and reports worker liveness, ready accounts, selected
 chats, archived/indexed message counts, pending scopes, last activity and separate discovery/index
@@ -72,7 +94,8 @@ absence from a page does not prove deletion. Coverage remains `observed_only`.
 
 ## Deployment and rollback
 
-Archive schema 3 adds persistent head checkpoints and exclusions to schemas 1/2 without dropping
+Archive schema 4 adds persistent per-account adaptive loading state to schema 3, which added
+head checkpoints and exclusions to schemas 1/2 without dropping
 message or project content. Stop the service and take a consistent private state/code/config backup
 before upgrading. A rollback needs the matching old database and package, not just the old code.
 The usual test suite covers future accounts, fairness, reconnect checkpoints, exclusions, edits,

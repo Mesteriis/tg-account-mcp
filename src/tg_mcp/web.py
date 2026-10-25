@@ -2,6 +2,7 @@
 """Small, dependency-free setup page and JSON administration routes."""
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -11,7 +12,7 @@ from starlette.responses import FileResponse, HTMLResponse, JSONResponse, Respon
 from starlette.routing import Route
 
 from tg_mcp import __version__
-from tg_mcp.errors import GatewayError
+from tg_mcp.errors import GatewayError, LocalError
 
 SECURITY_HEADERS = {
     "Cache-Control": "no-store",
@@ -97,8 +98,14 @@ def setup_routes(manager, telemetry) -> list[Route]:
 
     async def status(request: Request) -> Response:
         accounts = [manager.login_state(row["account_id"]) for row in manager.list_accounts()]
+        worker = getattr(manager, "rag", None)
+        try:
+            rag = worker.status(details=True) if worker else {"enabled": False}
+        except (OSError, sqlite3.Error, LocalError, GatewayError):
+            rag = {"enabled": bool(worker), "status_error": "status_unavailable"}
         return _json(
             {
+                "rag": rag,
                 "version": __version__,
                 "summary": manager.status(),
                 "accounts": accounts,

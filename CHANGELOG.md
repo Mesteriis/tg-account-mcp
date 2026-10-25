@@ -5,6 +5,10 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+- Add a RAG dashboard page with history coverage, current-model text queue, errors and account pacing.
+- Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,
+  and gradually recover after two hours of active successful loading (archive schema 4).
+
 ### Added
 
 - Opt-in background RAG for all current/future ready user accounts, including groups/channels.

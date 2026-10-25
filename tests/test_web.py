@@ -182,3 +182,20 @@ async def test_account_and_bot_actions_and_body_limit(tmp_path):
     manager.add_bot.assert_awaited_once()
     manager.set_account_enabled.assert_awaited_once_with(ACCOUNT, False)
     manager.delete_account.assert_awaited_once_with(ACCOUNT)
+
+
+async def test_rag_status_failure_does_not_break_account_dashboard(tmp_path):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from tg_mcp.errors import LocalError
+
+    application, manager = app(tmp_path, host="127.0.0.1")
+    manager.rag = SimpleNamespace(status=Mock(side_effect=LocalError("Safe diagnostic")))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(application), base_url="https://mcp.test"
+    ) as client:
+        result = (await client.get("/setup/api/status")).json()
+    assert result["rag"]["status_error"] == "status_unavailable"
+    assert result["accounts"][0]["account_id"] == ACCOUNT
+    assert "Safe diagnostic" not in str(result)

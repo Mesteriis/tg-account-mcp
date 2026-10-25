@@ -374,7 +374,7 @@ async def test_archive_worker_resumes_configured_chats_and_respects_flood_wait(
     with pytest.raises(asyncio.CancelledError):
         await value._archive_loop()
     sync.assert_awaited_once_with("123")
-    sleep.assert_awaited_once_with(120)
+    sleep.assert_awaited_once_with(60)
     assert value.archive.status(account, "123")["error"] == "rate_limited"
 
 
@@ -396,3 +396,19 @@ async def test_background_retry_recovers_known_sessions_without_restarting_revok
     await value.retry_failed_accounts()
     assert value._accounts[account["account_id"]] is runtime
     assert runtime.status == "revoked"
+
+
+async def test_manager_keeps_healthy_account_running(manager):
+    value, _ = manager
+    for account, chat in [("one", "1"), ("one", "2"), ("two", "3")]:
+        value.archive.configure(account, chat, "Synthetic", enabled=True, retain_deleted=False)
+    limited = SimpleNamespace(
+        sync_archive_chat=AsyncMock(side_effect=GatewayError("rate_limited", "Wait", 180))
+    )
+    healthy = SimpleNamespace(sync_archive_chat=AsyncMock())
+    value.user_gateway = AsyncMock(
+        side_effect=lambda account: limited if account == "one" else healthy
+    )
+    assert await value._sync_archives() == 60
+    limited.sync_archive_chat.assert_awaited_once_with("1")
+    healthy.sync_archive_chat.assert_awaited_once_with("3")

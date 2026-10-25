@@ -141,9 +141,9 @@ class OllamaEmbeddings:
         )
 
     async def embed(self, texts: list[str], model_key: str) -> list[list[float]]:
-        if not 1 <= len(texts) <= 16 or any(not t.strip() or len(t) > 4096 for t in texts):
+        if not 1 <= len(texts) <= 16 or any(not t.strip() or len(t) > 8192 for t in texts):
             raise GatewayError(
-                "invalid_request", "Embed 1–16 nonempty texts of at most 4096 characters."
+                "invalid_request", "Embed 1–16 nonempty texts of at most 8192 characters."
             )
         if await self.model_key() != model_key:
             raise GatewayError(
@@ -202,8 +202,9 @@ class SemanticIndex:
         with self.archive.connect() as db:
             # Edits invalidate vectors in SQLite triggers; one model digest is indexed at a time.
             rows = db.execute(
-                f"SELECT * FROM {table} WHERE {where} AND {object_id} NOT IN "
-                f"(SELECT {idcol} FROM {vectors} WHERE model=?) ORDER BY {object_id} LIMIT ?",
+                f"SELECT * FROM {table} WHERE {where} AND NOT EXISTS "
+                f"(SELECT 1 FROM {vectors} v WHERE v.{idcol}={table}.{object_id} "
+                f"AND v.model=?) ORDER BY {object_id} LIMIT ?",
                 [*params, key, limit + 1],
             ).fetchall()
         batch = rows[:limit]

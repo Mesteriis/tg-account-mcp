@@ -45,6 +45,25 @@ readiness probe every five minutes refreshes the model cache. This does not rese
 GPU capacity: the inference host may evict the model or become unavailable. Cold starts and
 resource contention can still produce explicit errors; no cloud/keyword fallback is implicit.
 
+## Indexing throughput
+
+The conservative defaults remain four texts per batch and a one-second pause **after** each batch.
+On a measured local inference host, operators can increase `TG_MCP_RAG_BATCH_SIZE` up to 16 and
+set `TG_MCP_RAG_INDEX_INTERVAL=0.1` (supported range 0.1–300 seconds). This controls only local
+embedding throughput; Telegram discovery and adaptive history pacing are independent. A single
+index worker limits concurrent inference, and provider failures retain exponential backoff.
+When no jobs remain, the polling pause is at least one second to avoid a busy idle loop.
+Measure indexed messages per second and interactive latency before/after tuning; queue growth
+alone is inconclusive while the archive is ingesting more history.
+
+Queue selection stops at the first pending text in each chat, and batch selection uses indexed
+message/model lookups rather than building the complete model's vector-ID list. Scope fairness,
+current-model identity checks and edit/deletion invalidation are unchanged. Embedding inputs allow
+up to 8192 characters per text with `truncate=false`: longer Telegram posts within this bound are
+sent in full. Providers with a smaller context window fail explicitly; larger inputs remain errors,
+not silently shortened or marked indexed. No model-key change or reindex of existing vectors is
+needed because the embedding representation and text content are unchanged.
+
 ## Adaptive Telegram loading
 
 History and dialog discovery share a persistent per-account loading gate. The minimum interval

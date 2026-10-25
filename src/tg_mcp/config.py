@@ -56,7 +56,7 @@ class Settings(BaseModel):
 
     background_rag: bool = False
     rag_discovery_interval: int = Field(default=300, ge=30, le=86400)
-    rag_index_interval: int = Field(default=1, ge=1, le=300)
+    rag_index_interval: float = Field(default=1, ge=0.1, le=300)
     rag_batch_size: int = Field(default=4, ge=1, le=16)
     embedding_url: str | None = None
     embedding_model: str | None = Field(default=None, min_length=1, max_length=128)
@@ -136,7 +136,7 @@ class Settings(BaseModel):
             state_dir=state_dir,
             background_rag=os.environ.get("TG_MCP_BACKGROUND_RAG", "false"),
             rag_discovery_interval=int(os.environ.get("TG_MCP_RAG_DISCOVERY_INTERVAL", "300")),
-            rag_index_interval=int(os.environ.get("TG_MCP_RAG_INDEX_INTERVAL", "1")),
+            rag_index_interval=float(os.environ.get("TG_MCP_RAG_INDEX_INTERVAL", "1")),
             rag_batch_size=int(os.environ.get("TG_MCP_RAG_BATCH_SIZE", "4")),
             embedding_url=os.environ.get("TG_MCP_EMBEDDING_URL") or None,
             embedding_model=os.environ.get("TG_MCP_EMBEDDING_MODEL") or None,

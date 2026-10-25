@@ -5,6 +5,8 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+- Speed up local RAG queue selection, allow fractional indexing pauses, and embed posts up to
+  8192 characters without truncation; keep Telegram adaptive pacing independent.
 - Retry each account independently of other accounts’ long-running history passes.
 - Add a RAG dashboard page with history coverage, current-model text queue, errors and account pacing.
 - Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,

@@ -361,20 +361,14 @@ async def test_multiple_bots_are_selected_by_id(tmp_path):
         await value.close()
 
 
-async def test_archive_worker_resumes_configured_chats_and_respects_flood_wait(
-    manager, monkeypatch
-):
+async def test_archive_worker_resumes_configured_chats_and_respects_flood_wait(manager):
     value, _ = manager
     account = "acct_aaaaaaaaaaaaaaaa"
     value.archive.configure(account, "123", "Synthetic", enabled=True, retain_deleted=False)
     sync = AsyncMock(side_effect=GatewayError("rate_limited", "Wait", 120))
     value.user_gateway = AsyncMock(return_value=SimpleNamespace(sync_archive_chat=sync))
-    sleep = AsyncMock(side_effect=asyncio.CancelledError)
-    monkeypatch.setattr("tg_mcp.manager.asyncio.sleep", sleep)
-    with pytest.raises(asyncio.CancelledError):
-        await value._archive_loop()
+    assert await value._sync_archives() == 60
     sync.assert_awaited_once_with("123")
-    sleep.assert_awaited_once_with(60)
     assert value.archive.status(account, "123")["error"] == "rate_limited"
 
 
@@ -412,3 +406,35 @@ async def test_manager_keeps_healthy_account_running(manager):
     assert await value._sync_archives() == 60
     limited.sync_archive_chat.assert_awaited_once_with("1")
     healthy.sync_archive_chat.assert_awaited_once_with("3")
+
+
+async def test_fast_account_retries_and_future_account_start_during_long_pass(manager):
+    value, _ = manager
+    release = asyncio.Event()
+
+    async def wait(chat):
+        await release.wait()
+
+    slow = AsyncMock(side_effect=wait)
+    fast = AsyncMock(side_effect=GatewayError("load_paused", "Busy", 5))
+    future = AsyncMock()
+    gateways = {"slow": slow, "fast": fast, "future": future}
+    value.user_gateway = AsyncMock(
+        side_effect=lambda account: SimpleNamespace(sync_archive_chat=gateways[account])
+    )
+    for account in ["slow", "fast"]:
+        value.archive.configure(account, "1", "Synthetic", enabled=True, retain_deleted=False)
+    await value._sync_archives()
+    first_task = value._archive_workers["slow"]
+    assert not first_task.done()
+    assert fast.await_count == 1
+    value.archive.configure("future", "1", "New account", enabled=True, retain_deleted=False)
+    await value._sync_archives()
+    assert value._archive_workers["slow"] is first_task
+    assert slow.await_count == 1
+    assert fast.await_count == 2
+    future.assert_awaited_once_with("1")
+    assert value.archive.status("fast", "1")["error"] is None
+    await value.close()
+    assert first_task.cancelled()
+    assert not value._archive_workers

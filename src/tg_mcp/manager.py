@@ -61,6 +61,7 @@ class IdentityManager:
         self.store = store
         self.archive = ArchiveStore(store)
         self._archive_task: asyncio.Task | None = None
+        self._archive_workers: dict[str, asyncio.Task] = {}
         self.rag = BackgroundRAG(self, settings) if settings and settings.background_rag else None
         self.credentials = credentials
         self.http = http
@@ -127,10 +128,25 @@ class IdentityManager:
                 self.archive.capture_failed = True
                 logging.getLogger("tg_mcp").error("Archive synchronization storage failed")
 
-        # Each account advances independently; a paced read cannot delay another account.
-        async with asyncio.TaskGroup() as group:
-            for chats in accounts.values():
-                group.create_task(guarded_sync(chats))
+        # Schedule/reap each account separately. A long pass must not hold up
+        # another account's next retry or a newly connected account's first pass.
+        for account, task in list(self._archive_workers.items()):
+            if account not in accounts:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+                del self._archive_workers[account]
+            elif task.done():
+                if not task.cancelled() and task.exception() is not None:
+                    self.archive.capture_failed = True
+                    logging.getLogger("tg_mcp").error("Archive account worker failed")
+                del self._archive_workers[account]
+        for account, chats in accounts.items():
+            if account not in self._archive_workers:
+                self._archive_workers[account] = asyncio.create_task(
+                    guarded_sync(chats), name="tg-mcp-archive-account"
+                )
+        await asyncio.sleep(0)
         return 60
 
     async def close(self) -> None:
@@ -141,6 +157,12 @@ class IdentityManager:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._archive_task
             self._archive_task = None
+        for task in self._archive_workers.values():
+            task.cancel()
+        for task in self._archive_workers.values():
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._archive_workers.clear()
         tasks = [runtime.login_task for runtime in self._accounts.values() if runtime.login_task]
         for task in tasks:
             task.cancel()

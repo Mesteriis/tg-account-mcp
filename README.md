@@ -235,7 +235,11 @@ reporting vulnerabilities and the Russian README for operational details and err
 
 Opt in selected chats to persistent local history, observed edit versions and full-text search.
 Deleted-content retention is off by default. See [archive setup and limitations](docs/archive.md)
-and the [tool catalog](docs/tools.md#local-archives). Semantic search is not included.
+and the [tool catalog](docs/tools.md#local-archives).
+
+[Project memory and semantic search](docs/project-memory.md) add source-backed drafts, explicit
+approval and opt-in local Ollama embeddings. Projects stay isolated; source edits and deletions
+invalidate derived memory. Keyword search works without an embedding model.
 
 ## Known limitations
 

@@ -6,7 +6,7 @@ from ipaddress import ip_network
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from tg_mcp.discovery import DISCOVERY_PORT, local_ipv4_addresses, validate_endpoint
 
@@ -42,7 +42,7 @@ class Credentials(BaseModel):
 
 
 class Settings(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, hide_input_in_errors=True)
 
     state_dir: Path
     host: str = "127.0.0.1"
@@ -53,6 +53,25 @@ class Settings(BaseModel):
     discovery_enabled: bool = False
     discovery_port: int = Field(default=DISCOVERY_PORT, ge=1, le=65535)
     discovery_url: str | None = None
+
+    embedding_url: str | None = None
+    embedding_model: str | None = Field(default=None, min_length=1, max_length=128)
+    embedding_dimensions: int = Field(default=256, ge=32, le=4096)
+
+    @model_validator(mode="after")
+    def embedding_pair(self):
+        if bool(self.embedding_url) != bool(self.embedding_model):
+            raise ValueError("Configure both embedding URL and model, or neither")
+        return self
+
+    @field_validator("embedding_url")
+    @classmethod
+    def local_embedding_url(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        from tg_mcp.semantic import validate_local_url
+
+        return validate_local_url(value)
 
     @field_validator("allowed_hosts", "allowed_origins")
     @classmethod
@@ -109,6 +128,9 @@ class Settings(BaseModel):
                         allowed_hosts.append(authority)
         return cls(
             state_dir=state_dir,
+            embedding_url=os.environ.get("TG_MCP_EMBEDDING_URL") or None,
+            embedding_model=os.environ.get("TG_MCP_EMBEDDING_MODEL") or None,
+            embedding_dimensions=int(os.environ.get("TG_MCP_EMBEDDING_DIMENSIONS", "256")),
             host=host,
             port=port,
             allowed_hosts=allowed_hosts,

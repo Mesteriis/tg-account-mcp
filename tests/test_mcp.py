@@ -161,11 +161,17 @@ class FakeManager:
 async def endpoint(tmp_path):
     manager = FakeManager()
     manager.archive = ArchiveStore(StateStore(tmp_path))
+    manager.embedding_provider = SimpleNamespace(
+        enabled=False,
+        model_key=AsyncMock(
+            side_effect=GatewayError("semantic_disabled", "Configure local embeddings first.")
+        ),
+    )
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
     settings = Settings(state_dir=tmp_path, port=port, allowed_hosts=[f"127.0.0.1:{port}"])
-    app = create_app(settings, manager, TOKEN)
+    app = create_app(settings, manager, TOKEN, embedding_provider=manager.embedding_provider)
     server = uvicorn.Server(uvicorn.Config(app, log_level="critical", access_log=False))
     task = asyncio.create_task(server.serve(sockets=[sock]))
     try:
@@ -201,6 +207,17 @@ async def test_real_sdk_lists_tools_and_routes_explicit_ids(endpoint, mode):
             "get_message_versions",
             "export_chat_archive",
             "purge_chat_archive",
+            "create_memory_project",
+            "list_memory_projects",
+            "propose_project_memory",
+            "approve_project_memory",
+            "list_project_memory",
+            "delete_project_memory",
+            "delete_memory_project",
+            "index_archive_semantics",
+            "semantic_search_archive",
+            "index_project_memory",
+            "search_project_memory",
             "get_status",
             "list_accounts",
             "list_bots",
@@ -540,3 +557,132 @@ async def test_disabled_account_blocks_archive_reads_but_allows_admin_cleanup(en
         assert not paused.is_error
         purged = await client.call_tool("purge_chat_archive", args)
         assert purged.structured_content["purged"] is True
+
+
+async def test_project_memory_approval_semantics_and_scope_boundaries(endpoint):
+    url, manager = endpoint
+    provider = manager.embedding_provider
+    provider.enabled = True
+    provider.model_key = AsyncMock(return_value="synthetic-model")
+    provider.embed = AsyncMock(side_effect=lambda texts, key: [[1.0, 0.0] for _ in texts])
+    archive = manager.archive
+    for chat in ["123", "456"]:
+        archive.configure(ACCOUNT_A, chat, "Synthetic", enabled=True, retain_deleted=True)
+        archive.ingest_page(ACCOUNT_A, chat, [{"id": "1", "text": "durable queue"}], None)
+    async with connected(url) as client:
+        projects = []
+        for chats in [["123"], ["456"], ["123", "456"]]:
+            result = await client.call_tool(
+                "create_memory_project",
+                {"account_id": ACCOUNT_A, "title": "Synthetic project", "chat_ids": chats},
+            )
+            assert not result.is_error
+            projects.append(result.structured_content["project_id"])
+        project = projects[0]
+        args = {"account_id": ACCOUNT_A, "project_id": project}
+        proposed = await client.call_tool(
+            "propose_project_memory",
+            {**args, "text": "Use a queue", "sources": [{"chat_id": "123", "message_id": "1"}]},
+        )
+        assert not proposed.is_error
+        memory_id = proposed.structured_content["memory_id"]
+        result = await client.call_tool("search_project_memory", {**args, "query": "queue"})
+        assert not result.structured_content["results"]
+        approved = await client.call_tool(
+            "approve_project_memory", {**args, "memory_id": memory_id}
+        )
+        assert approved.structured_content["state"] == "approved"
+        indexed = await client.call_tool("index_project_memory", args)
+        assert indexed.structured_content["indexed"] == 1
+        indexed_chat = await client.call_tool(
+            "index_archive_semantics", {"account_id": ACCOUNT_A, "chat_id": "123"}
+        )
+        assert indexed_chat.structured_content["indexed"] == 1
+        denied_source = await client.call_tool(
+            "propose_project_memory",
+            {**args, "text": "no", "sources": [{"chat_id": "456", "message_id": "1"}]},
+        )
+        assert denied_source.is_error
+        created = await client.call_tool(
+            "create_agent_token",
+            {
+                "label": "Scoped memory reader",
+                "scopes": ["read"],
+                "identity_ids": [ACCOUNT_A],
+                "chat_ids": ["123"],
+            },
+        )
+        token = created.structured_content["token"]
+    async with connected(url, token=token) as client:
+        args = {"account_id": ACCOUNT_A, "project_id": project}
+        result = await client.call_tool(
+            "search_project_memory", {**args, "query": "queue", "mode": "semantic"}
+        )
+        assert not result.is_error
+        assert result.structured_content["results"][0]["sources"] == [
+            {"account_id": ACCOUNT_A, "chat_id": "123", "message_id": "1"}
+        ]
+        listed = await client.call_tool("list_memory_projects", {"account_id": ACCOUNT_A})
+        assert [p["project_id"] for p in listed.structured_content["projects"]] == [project]
+        provider.embed.reset_mock()
+        for denied_project in projects[1:]:
+            result = await client.call_tool(
+                "search_project_memory",
+                {**args, "project_id": denied_project, "query": "queue", "mode": "semantic"},
+            )
+            assert result.is_error
+        result = await client.call_tool(
+            "semantic_search_archive", {"account_id": ACCOUNT_A, "chat_id": "456", "query": "queue"}
+        )
+        assert result.is_error
+        provider.embed.assert_not_awaited()
+        archive.purge(ACCOUNT_A, "456")
+        for denied_project in projects[1:]:
+            result = await client.call_tool(
+                "search_project_memory",
+                {**args, "project_id": denied_project, "query": "queue", "mode": "semantic"},
+            )
+            assert result.is_error
+        provider.embed.assert_not_awaited()
+        for name, extra in [
+            ("approve_project_memory", {"memory_id": memory_id}),
+            ("delete_project_memory", {"memory_id": memory_id}),
+            ("index_project_memory", {}),
+            ("delete_memory_project", {}),
+            ("list_project_memory", {"state": "all"}),
+        ]:
+            assert (await client.call_tool(name, {**args, **extra})).is_error
+        assert (
+            await client.call_tool(
+                "search_project_memory", {**args, "account_id": ACCOUNT_B, "query": "queue"}
+            )
+        ).is_error
+        archive.record(
+            ACCOUNT_A,
+            "edited_message",
+            {
+                "chat_id": "123",
+                "message": {
+                    "id": "1",
+                    "text": "new decision",
+                    "edit_date": "2026-10-25T12:00:00+00:00",
+                },
+            },
+        )
+        result = await client.call_tool(
+            "search_project_memory", {**args, "query": "queue", "mode": "semantic"}
+        )
+        assert not result.structured_content["results"]
+
+
+async def test_semantic_disabled_is_explicit_and_offline_keyword_memory_still_works(endpoint):
+    url, manager = endpoint
+    manager.archive.configure(ACCOUNT_A, "123", "Synthetic", enabled=True, retain_deleted=False)
+    async with connected(url) as client:
+        result = await client.call_tool(
+            "semantic_search_archive", {"account_id": ACCOUNT_A, "chat_id": "123", "query": "queue"}
+        )
+        assert result.is_error
+        capabilities = (await client.call_tool("get_capabilities")).structured_content
+        assert capabilities["features"]["semantic_search"] is False
+        assert capabilities["features"]["project_memory"] is True

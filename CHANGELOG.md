@@ -7,6 +7,12 @@ contain breaking changes documented here.
 
 ### Added
 
+- Project memory with selected source chats, draft/approval states and message citations.
+  Source edits make approved memory stale; deletion removes derived memory and vectors.
+- Opt-in local Ollama embeddings with digest-bound indexes, bounded cosine retrieval and explicit
+  partial coverage. Public destinations, redirects and implicit cloud fallback are rejected.
+- Schema-1 to schema-2 archive migration and a synthetic real-model retrieval smoke script.
+
 - Opt-in SQLite chat archives with live message/edit/deletion capture, resumable background
   history scans, literal full-text search, version retrieval, bounded JSON export and purge.
   Archive tools enforce account/chat token scopes; configuration and cleanup require admin.

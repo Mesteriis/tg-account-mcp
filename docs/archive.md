@@ -13,7 +13,7 @@ The host Python SQLite library must include FTS5; startup fails if it is unavail
 2. With an admin token call `configure_chat_archive(account_id, chat_id, enabled=true,
    retain_deleted=false)`. Enable only sources authorized for local retention and agent access.
 3. The server captures new messages and edits while the account is connected. Its background
-   worker imports at most 100 historical messages per selected chat per cycle, then waits 60
+   worker refreshes the recent head and imports at most 100 older messages per selected chat per cycle, then waits 60
    seconds. Telegram flood waits delay subsequent synchronization. For a foreground page use
    `sync_chat_archive(account_id, chat_id)`; repeat as needed.
 4. Inspect `get_archive_status`. `backfill_complete` means an import reached the end of the
@@ -54,7 +54,7 @@ archive reads; an administrator can still pause or purge its archives.
 - `configure_chat_archive(..., enabled=false)` pauses capture and backfill while preserving data.
   It is not a deletion operation. Resume with `enabled=true`.
 - `sync_chat_archive(..., restart=true)` resets import progress without removing saved messages.
-  Use this after rotating the MCP signing token, which invalidates saved Telegram cursors.
+  Invalid signed cursors after token rotation are also reset automatically on the next sync retry.
 - `purge_chat_archive` removes the selection, messages, versions and search entries. Deleting an
   account also purges its archive. Neither operation deletes Telegram data or external backups.
   Logical removal is not a guarantee of forensic erasure from filesystem snapshots or backups.
@@ -72,3 +72,6 @@ agent can retrieve passages, read their saved versions and cite their IDs to ans
 Archive search provides lexical retrieval. Optional [project memory and semantic search](project-memory.md)
 preserve the same scope filters and invalidate derived data on observed source edits/deletions.
 Knowledge promotion requires explicit approval; local embedding processing is separately configured.
+
+[Optional background mode](background-rag.md) discovers all user-account dialogs and maintains
+local embeddings continuously, while preserving explicit pause/purge exclusions.

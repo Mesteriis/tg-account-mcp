@@ -64,7 +64,8 @@ context window fail rather than being silently truncated.
 Use `index_archive_semantics(account_id, chat_id, limit)` for one explicit batch of active
 messages, or `index_project_memory(account_id, project_id, limit)` for approved memories. A batch
 contains at most 16 entries. Repeat while `has_more` is true. These tools authorize local content
-processing and require admin. No background embedding job is enabled.
+processing and require admin. Background embedding is off by default; [all-account background mode](background-rag.md)
+can be explicitly enabled by the operator.
 
 Use `semantic_search_archive` for one chat, or `search_project_memory(..., mode="semantic")` for
 one project. Both return cosine-ranked results with source IDs. Deleted messages, pending drafts
@@ -92,7 +93,7 @@ Opening an existing schema-1 archive adds the project tables, vectors and invali
 then sets SQLite `user_version=2`. Existing message snapshots, FTS entries and cursors remain.
 Before deploying, stop the service and back up the complete private state. Rolling back to
 schema-1 software requires restoring its matching archive backup as well as the old package;
-there is no automatic downgrade migration. A consistent code/dependency backup is also needed.
+there is no automatic downgrade migration. [Background mode](background-rag.md) adds schema 3. A consistent code/dependency backup is also needed.
 
 The normal test suite uses deterministic vectors and fake HTTP providers for permission, approval,
 migration, ranking, digest changes, stale writes and deletion checks. It does not establish model

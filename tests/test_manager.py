@@ -376,3 +376,23 @@ async def test_archive_worker_resumes_configured_chats_and_respects_flood_wait(
     sync.assert_awaited_once_with("123")
     sleep.assert_awaited_once_with(120)
     assert value.archive.status(account, "123")["error"] == "rate_limited"
+
+
+async def test_background_retry_recovers_known_sessions_without_restarting_revoked_logins(manager):
+    value, clients = manager
+    await value.start()
+    account = await value.add_account("Synthetic")
+    await wait_for_state(value, account["account_id"], "waiting_qr")
+    clients[0].telegram_id, clients[0].authorized = 101, True
+    await value.complete_login_for_test(account["account_id"])
+    runtime = value._accounts[account["account_id"]]
+    runtime.status, runtime.error = "error", "unavailable"
+    replacement = FakeClient(telegram_id=101)
+    value._factory = lambda path, credentials: replacement
+    await value.retry_failed_accounts()
+    assert value.login_state(account["account_id"])["status"] == "ready"
+    runtime = value._accounts[account["account_id"]]
+    runtime.status = "revoked"
+    await value.retry_failed_accounts()
+    assert value._accounts[account["account_id"]] is runtime
+    assert runtime.status == "revoked"

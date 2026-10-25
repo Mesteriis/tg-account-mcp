@@ -25,7 +25,7 @@ class ArchiveStore:
         self.capture_failed = False
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise GatewayError("archive_version", "Unsupported archive schema version.")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS chats (
@@ -59,7 +59,7 @@ class ArchiveStore:
             from tg_mcp.memory import MEMORY_SCHEMA
 
             db.executescript(MEMORY_SCHEMA)
-            db.execute("PRAGMA user_version=2")
+            db.execute("PRAGMA user_version=3")
 
     @contextmanager
     def connect(self):
@@ -87,6 +87,10 @@ class ArchiveStore:
         is_channel: bool = False,
     ) -> dict:
         with self.connect() as db:
+            if enabled:
+                db.execute("DELETE FROM rag_exclusions WHERE account=? AND chat=?", (account, chat))
+            else:
+                db.execute("INSERT OR IGNORE INTO rag_exclusions VALUES(?,?)", (account, chat))
             db.execute(
                 """INSERT INTO chats(account, chat, title, enabled, retain_deleted,is_channel)
                 VALUES(?,?,?,?,?,?) ON CONFLICT(account,chat) DO UPDATE SET
@@ -102,6 +106,81 @@ class ArchiveStore:
                 ).fetchall():
                     self._erase(db, account, chat, row["mid"], row["rowid"])
         return self.status(account, chat)
+
+    def discover(self, account: str, chat: str, title: str, is_channel: bool) -> bool:
+        """Register an automatically discovered chat without overriding explicit exclusions."""
+        with self.connect() as db:
+            if db.execute(
+                "SELECT 1 FROM rag_exclusions WHERE account=? AND chat=?", (account, chat)
+            ).fetchone():
+                return False
+            existed = db.execute(
+                "SELECT 1 FROM chats WHERE account=? AND chat=?", (account, chat)
+            ).fetchone()
+            db.execute(
+                "INSERT INTO chats(account,chat,title,enabled,retain_deleted,is_channel) "
+                "VALUES(?,?,?,1,0,?) ON CONFLICT(account,chat) DO UPDATE SET "
+                "title=CASE WHEN excluded.title!='' THEN excluded.title ELSE chats.title END,"
+                "is_channel=excluded.is_channel",
+                (account, chat, title, is_channel),
+            )
+            return existed is None
+
+    def head_progress(self, account: str, chat: str) -> dict:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM rag_heads WHERE account=? AND chat=?", (account, chat)
+            ).fetchone()
+            return dict(row) if row else {"cursor": None, "high_id": 0, "stop_id": 0, "top_id": 0}
+
+    def ingest_head(self, account: str, chat: str, messages: list[dict], cursor: str | None):
+        with self.connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM chats WHERE account=? AND chat=? AND enabled=1", (account, chat)
+            ).fetchone():
+                return
+            row = db.execute(
+                "SELECT * FROM rag_heads WHERE account=? AND chat=?", (account, chat)
+            ).fetchone()
+            progress = (
+                dict(row) if row else {"cursor": None, "high_id": 0, "stop_id": 0, "top_id": 0}
+            )
+            stop = progress["stop_id"] if progress["cursor"] else progress["high_id"]
+            top = max(
+                [
+                    progress["top_id"] if progress["cursor"] else progress["high_id"],
+                    *(int(message["id"]) for message in messages),
+                ]
+            )
+            for message in messages:
+                self._put(db, account, chat, message)
+            done = (
+                stop == 0
+                or cursor is None
+                or any(int(message["id"]) <= stop for message in messages)
+            )
+            db.execute(
+                "INSERT OR REPLACE INTO rag_heads VALUES(?,?,?,?,?,?)",
+                (
+                    account,
+                    chat,
+                    None if done else cursor,
+                    top if done else progress["high_id"],
+                    stop,
+                    top,
+                ),
+            )
+            db.execute(
+                "UPDATE chats SET last_sync=?,error=NULL WHERE account=? AND chat=?",
+                (now(), account, chat),
+            )
+
+    def sync_config(self, account: str, chat: str) -> dict | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM chats WHERE account=? AND chat=? AND enabled=1", (account, chat)
+            ).fetchone()
+            return dict(row) if row else None
 
     def configured(self, account: str | None = None) -> list[dict]:
         with self.connect() as db:
@@ -348,6 +427,7 @@ class ArchiveStore:
 
     def reset_sync(self, account: str, chat: str):
         with self.connect() as db:
+            db.execute("DELETE FROM rag_heads WHERE account=? AND chat=?", (account, chat))
             db.execute(
                 "UPDATE chats SET cursor=NULL,backfill_complete=0,error=NULL "
                 "WHERE account=? AND chat=?",
@@ -379,6 +459,10 @@ class ArchiveStore:
 
     def purge(self, account: str, chat: str | None = None):
         with self.connect() as db:
+            if chat is not None:
+                db.execute("INSERT OR IGNORE INTO rag_exclusions VALUES(?,?)", (account, chat))
+            else:
+                db.execute("DELETE FROM rag_exclusions WHERE account=?", (account,))
             where, params = (
                 ("account=?", [account])
                 if chat is None

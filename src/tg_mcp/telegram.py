@@ -6,6 +6,7 @@ import math
 import re
 import sqlite3
 from collections import deque
+from collections.abc import Callable
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,10 +95,12 @@ class UserGateway:
         cursor_secret: str,
         identity_id: str = "acct_legacy",
         archive: ArchiveStore | None = None,
+        auto_archive: Callable[[], bool] | None = None,
     ):
         self.client = client
         self.identity_id = identity_id
         self.archive = archive
+        self.auto_archive = auto_archive
         self._archive_sync_lock = asyncio.Lock()
         self._archive_retry_until = 0.0
         self.cursors = Cursors(cursor_secret)
@@ -1374,6 +1377,21 @@ class UserGateway:
             "username": getattr(entity, "username", None),
         }
 
+    async def discover_archives(self) -> int:
+        if self.archive is None:
+            raise GatewayError("unavailable", "Archive storage is unavailable.")
+        discovered = 0
+        with telegram_errors():
+            await self._authorized()
+            async for dialog in self.client.iter_dialogs(limit=None):
+                if self.auto_archive is not None and not self.auto_archive():
+                    break
+                discovered += self.archive.discover(
+                    self.identity_id, str(dialog.id), dialog.name or "", bool(dialog.is_channel)
+                )
+                await asyncio.sleep(0)
+        return discovered
+
     async def sync_archive_chat(self, chat_id: str, *, restart: bool = False) -> dict:
         async with self._archive_sync_lock:
             remaining = self._archive_retry_until - asyncio.get_running_loop().time()
@@ -1388,18 +1406,25 @@ class UserGateway:
     async def _sync_archive_chat(self, chat_id: str) -> dict:
         if self.archive is None:
             raise GatewayError("unavailable", "Archive storage is unavailable.")
-        config = next(
-            (row for row in self.archive.configured(self.identity_id) if row["chat"] == chat_id),
-            None,
-        )
+        config = self.archive.sync_config(self.identity_id, chat_id)
         if config is None:
             raise GatewayError("archive_disabled", "This chat archive is disabled.")
         try:
-            page = await self.history(chat_id, limit=100, cursor=config["cursor"])
+            progress = self.archive.head_progress(self.identity_id, chat_id)
+            head = await self.history(chat_id, limit=100, cursor=progress["cursor"])
+            self.archive.ingest_head(
+                self.identity_id, chat_id, head["messages"], head["next_cursor"]
+            )
+            if config["cursor"] is None and progress["cursor"] is None:
+                page = head
+            else:
+                page = await self.history(chat_id, limit=100, cursor=config["cursor"])
             self.archive.ingest_page(
                 self.identity_id, chat_id, page["messages"], page["next_cursor"]
             )
         except GatewayError as exc:
+            if exc.code == "invalid_cursor":
+                self.archive.reset_sync(self.identity_id, chat_id)
             if exc.retry_after:
                 self._archive_retry_until = asyncio.get_running_loop().time() + exc.retry_after
             self.archive.sync_error(self.identity_id, chat_id, exc.code)
@@ -1425,7 +1450,25 @@ class UserGateway:
             )
             self._update_condition.notify_all()
 
+    def _discover_event_chat(self, event) -> None:
+        if not self.archive or not self.auto_archive or not self.auto_archive():
+            return
+        if event.chat_id is None:
+            return
+        try:
+            chat = getattr(event, "chat", None)
+            self.archive.discover(
+                self.identity_id,
+                str(event.chat_id),
+                utils.get_display_name(chat) if chat else "",
+                bool(getattr(event, "is_channel", False)),
+            )
+        except (OSError, sqlite3.Error, LocalError):
+            self.archive.capture_failed = True
+            logging.getLogger("tg_mcp").error("Background RAG event discovery failed")
+
     async def _on_new_message(self, event) -> None:
+        self._discover_event_chat(event)
         await self._record_update(
             "new_message",
             chat_id=str(event.chat_id) if event.chat_id is not None else None,
@@ -1433,6 +1476,7 @@ class UserGateway:
         )
 
     async def _on_edited_message(self, event) -> None:
+        self._discover_event_chat(event)
         await self._record_update(
             "edited_message",
             chat_id=str(event.chat_id) if event.chat_id is not None else None,

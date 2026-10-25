@@ -7,6 +7,10 @@ contain breaking changes documented here.
 
 ### Added
 
+- Opt-in background RAG for all current/future ready user accounts, including groups/channels.
+  Add immediate event discovery, fair automatic indexing, persistent reconnect head checkpoints,
+  pause/purge exclusions, model readiness/retries and an admin-only progress tool (schema 3).
+
 - Project memory with selected source chats, draft/approval states and message citations.
   Source edits make approved memory stale; deletion removes derived memory and vectors.
 - Opt-in local Ollama embeddings with digest-bound indexes, bounded cosine retrieval and explicit

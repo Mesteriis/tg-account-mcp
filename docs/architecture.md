@@ -23,6 +23,7 @@ flowchart LR
 - `manager.py` owns account/bot lifecycle and isolates failures to one identity.
 - `telegram.py` adapts Telethon operations to the server's stable data contracts.
 - `bot.py` contains the small Telegram Bot API boundary.
+- `background.py` runs optional all-account discovery and fair automatic local indexing.
 - `memory.py` owns project selections, source fingerprints and the draft/approval lifecycle.
 - `semantic.py` validates local Ollama responses and stores/searches scope-filtered vectors.
 - `archive.py` stores opt-in message snapshots, observed versions, tombstones and an FTS5 index
@@ -46,7 +47,7 @@ Selected chat archives use `archive.sqlite3`, with transactions covering message
 search entries and import cursors. Account deletion removes its archived content. See
 [archive operations and coverage](archive.md). Schema 2 adds project memory, vectors and SQLite
 triggers that invalidate derived content on source edits, deletion or purge. Semantic indexing
-is explicit and optional; there is no automatic inference worker.
+is explicit and optional; [background mode](background-rag.md) enables continuous local indexing.
 
 The application requires a single writer. Files are atomically replaced, but the state model is
 not a distributed database and one state volume must not be mounted by multiple replicas.

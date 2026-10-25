@@ -23,6 +23,16 @@ def new_id(prefix: str) -> str:
 
 
 MEMORY_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS rag_exclusions (
+        account TEXT NOT NULL, chat TEXT NOT NULL, PRIMARY KEY(account,chat)
+    );
+    CREATE TABLE IF NOT EXISTS rag_heads (
+        account TEXT NOT NULL, chat TEXT NOT NULL, cursor TEXT,
+        high_id INTEGER NOT NULL DEFAULT 0, stop_id INTEGER NOT NULL DEFAULT 0,
+        top_id INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(account,chat),
+        FOREIGN KEY(account,chat) REFERENCES chats(account,chat) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY, account TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT NOT NULL
     );

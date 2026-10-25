@@ -174,7 +174,8 @@ async def test_gateway_sync_resume_events_and_error_status(archive):
     restarted = UserGateway(client, "t" * 43, A, archive=archive)
     restarted.history = AsyncMock(return_value={"messages": [msg("2")], "next_cursor": None})
     await restarted.sync_archive_chat("123")
-    restarted.history.assert_awaited_once_with("123", limit=100, cursor="page2")
+    assert restarted.history.await_count == 2
+    assert restarted.history.call_args.kwargs["cursor"] == "page2"
     assert archive.status(A, "123")["backfill_complete"]
     await restarted._on_edited_message(
         SimpleNamespace(

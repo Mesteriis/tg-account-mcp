@@ -318,6 +318,7 @@ def create_app(
                 "archive_full_text_search": True,
                 "semantic_search": embeddings.enabled,
                 "project_memory": True,
+                "background_rag": bool(getattr(manager, "rag", None)),
             },
             "limits": {
                 "page_size": 100,
@@ -427,7 +428,7 @@ def create_app(
     async def sync_chat_archive(
         account_id: AccountID, chat_id: ChatID, restart: bool = False
     ) -> dict[str, Any]:
-        """Import the next <=100-message page; progress survives restart (admin required)."""
+        """Refresh recent history and import an older page; resume after restart (admin)."""
 
         async def operation() -> dict:
             gateway = await manager.user_gateway(account_id)
@@ -876,6 +877,13 @@ def create_app(
             return {"results": matches[:limit], "partial": page["has_more"], "mode": "keyword"}
 
         return await project_call(operation, "search_project_memory", account_id, project_id)
+
+    @mcp.tool(annotations=READ)
+    async def get_background_rag_status() -> dict[str, Any]:
+        """Report global background RAG progress and errors (admin required)."""
+        enforce("admin")
+        rag = getattr(manager, "rag", None)
+        return rag.status() if rag else {"enabled": False, "running": False}
 
     @mcp.tool(annotations=READ)
     async def list_chats(

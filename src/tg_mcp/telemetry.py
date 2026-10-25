@@ -19,6 +19,7 @@ _IDENTITY = re.compile(r"^(?:acct|bot)_[a-z2-7]{16}$")
 _AGENT = re.compile(r"^agent_[a-z2-7]{16}$")
 _CHAT = re.compile(r"^-?[1-9][0-9]{0,18}$")
 _OPERATIONS = {
+    "get_background_rag_status",
     "create_memory_project",
     "list_memory_projects",
     "propose_project_memory",
@@ -83,6 +84,7 @@ _OPERATIONS = {
     "revoke_agent_token",
 }
 _CATEGORIES = {
+    "get_background_rag_status": "read",
     "create_memory_project": "send",
     "list_memory_projects": "read",
     "propose_project_memory": "send",

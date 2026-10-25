@@ -3,6 +3,7 @@
 let autoStarting = false;
 let selectedDays = 14;
 let data = null;
+let ragStale = false;
 let renderedWizardKey = null;
 let chartAnimationFrame = 0;
 let suppressAutoAccount = sessionStorage.getItem('tg-mcp-suppress-auto-account') === '1';
@@ -36,6 +37,7 @@ const viewCopy = {
   accounts: ['Аккаунты', 'Подключение и управление пользовательскими аккаунтами'],
   bots: ['Боты', 'Опциональные Telegram-боты для отправки сообщений'],
   activity: ['Активность', 'История операций и использование по аккаунтам'],
+  rag: ['RAG', 'Фоновая загрузка истории и локальный семантический поиск'],
   access: ['Доступ MCP', 'Параметры подключения агентов'],
   settings: ['Настройки', 'Хранение данных и приватность аналитики'],
 };
@@ -117,6 +119,7 @@ function navigate(view) {
   overview.classList.toggle('activity-only', view === 'activity');
   $('pageTitle').textContent = viewCopy[view][0];
   $('pageSubtitle').textContent = viewCopy[view][1];
+  history.replaceState(null, '', view === 'rag' ? '#rag' : location.pathname);
   closeSidebar();
   window.scrollTo({top: 0, behavior: 'smooth'});
   if (view === 'activity') setTimeout(() => q('.activity-panel', overview)?.scrollIntoView({block: 'start'}), 50);
@@ -478,13 +481,73 @@ async function startAccount() {
   try { await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); } catch (error) { showNotice(error.message); }
 }
 
+function renderRag(stale = ragStale) {
+  ragStale = stale;
+  const rag = data?.rag;
+  const state = $('ragState');
+  const details = $('ragDetails');
+  state.classList.toggle('rag-warning', stale || Boolean(rag?.status_error || rag?.last_error || rag?.chat_errors));
+  if (!rag || rag.status_error || !rag.enabled) {
+    details.hidden = true;
+    state.textContent = stale ? 'Нет связи с сервером. Состояние RAG недоступно.'
+      : rag?.status_error ? 'Не удалось прочитать состояние RAG. Повторная попытка через 4 секунды.'
+      : rag ? 'Фоновый RAG выключен. Включите его в конфигурации сервера.' : 'Загрузка состояния RAG…';
+    return;
+  }
+  details.hidden = false;
+  state.textContent = stale ? 'Нет связи с сервером. Ниже последние полученные данные; они могли устареть.'
+    : !rag.running ? 'Фоновые задачи остановлены.'
+    : rag.last_error ? `Фоновая задача ожидает повторной попытки: ${rag.last_error}`
+    : rag.chat_errors ? `RAG работает. Чатов с ограничениями или ошибками: ${formatNumber(rag.chat_errors)}. Подробности ниже.`
+    : 'RAG работает. Данные обновляются каждые 4 секунды.';
+  const count = (value) => value == null ? '—' : formatNumber(value);
+  const date = (value) => value ? formatDateTime(value) : '—';
+  const epoch = (value) => value ? date(value * 1000) : '—';
+  const accountName = (id) => data.accounts.find((a) => a.account_id === id)?.label || id;
+  $('ragHistory').textContent = `${count(rag.selected_chats)} чатов · история загружена до начала в ${count(rag.history_complete_chats)} · ещё не загружались ${count(rag.never_synced_chats)} · сохранено ${count(rag.archived_messages)} сообщений`;
+  $('ragIndex').textContent = `${count(rag.indexed_messages)} из ${count(rag.eligible_messages)} сохранённых текстов в индексе · осталось ${count(rag.pending_messages)}`;
+  const progress = $('ragProgress');
+  if (rag.pending_messages == null) progress.removeAttribute('value');
+  else progress.value = rag.eligible_messages ? 100 * rag.indexed_messages / rag.eligible_messages : 0;
+  $('ragModel').textContent = `Локальная модель: ${rag.embedding_model || '—'}. Пустые сообщения и сообщения без текста не входят в очередь индексации.`;
+  $('ragTimes').textContent = `Обнаружение чатов: ${date(rag.last_discovery)} · индексация: ${date(rag.last_index)} · снимок: ${date(rag.observed_at)}`;
+  const cell = (row, value, cls) => { const td = document.createElement('td'); td.textContent = value; if (cls) td.className = cls; row.append(td); return td; };
+  $('ragAccounts').replaceChildren();
+  data.accounts.filter((a) => a.enabled !== false).forEach((account) => {
+    const policy = (rag.loading || []).find((p) => p.account === account.account_id);
+    const row = document.createElement('tr');
+    cell(row, accountName(account.account_id));
+    cell(row, `${(policy?.interval ?? 2).toLocaleString('ru-RU', {maximumFractionDigits: 1})} с`);
+    cell(row, policy?.cooldown_until * 1000 > Date.now() ? epoch(policy.cooldown_until) : 'Нет паузы');
+    cell(row, epoch(policy?.last_limited));
+    cell(row, count(policy?.limits ?? 0));
+    $('ragAccounts').append(row);
+  });
+  $('ragChatSummary').textContent = `${count(rag.ready_accounts)} аккаунтов готовы · ${count(rag.chat_errors)} чатов с ограничениями или ошибками. Лимит чата показан до следующей успешной загрузки.`;
+  const mode = $('ragFilter').value;
+  const chats = (rag.chats || []).filter((c) => mode === 'errors' ? c.error : mode === 'pending' ? !c.backfill_complete : true);
+  $('ragChats').replaceChildren();
+  chats.forEach((chat) => {
+    const row = document.createElement('tr');
+    const title = cell(row, chat.title || chat.chat);
+    const subtitle = document.createElement('small'); subtitle.textContent = accountName(chat.account); title.append(subtitle);
+    cell(row, chat.backfill_complete ? 'До начала' : chat.last_sync ? 'Загружается' : 'В очереди');
+    cell(row, `${count(chat.eligible)} / ${count(chat.indexed)}`);
+    cell(row, date(chat.last_sync));
+    cell(row, chat.error === 'rate_limited' ? 'Лимит Telegram' : chat.error || 'Без ошибок', chat.error ? 'rag-warning' : '');
+    $('ragChats').append(row);
+  });
+  if (!chats.length) { const row = document.createElement('tr'); const td = cell(row, mode === 'all' ? 'Чаты ещё не обнаружены.' : 'Нет чатов по этому фильтру.'); td.colSpan = 5; $('ragChats').append(row); }
+}
+
 async function refresh() {
   try {
     data = await api('/setup/api/status');
     $('versionLabel').textContent = data.version ? `TG MCP v${data.version}` : 'TG MCP';
-    renderSummary(); renderIdentities(); renderFilters(); renderAnalytics(); renderManagement();
+    renderSummary(); renderIdentities(); renderFilters(); renderAnalytics(); renderManagement(); renderRag(false);
     if (!data.accounts.length && !autoStarting && !suppressAutoAccount) { autoStarting = true; await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); }
   } catch (error) {
+    renderRag(true);
     $('syncLabel').textContent = 'Нет доступа к данным';
     showNotice(error.message);
   }
@@ -511,4 +574,6 @@ if (reducedChartMotion.addEventListener) {
 
 const endpoint = `${location.origin}/mcp`; $('endpointValue').textContent = endpoint.replace(/^https?:\/\//, ''); $('endpointFull').textContent = endpoint;
 $('todayLabel').textContent = new Intl.DateTimeFormat('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'}).format(new Date());
+$('ragFilter').onchange = () => renderRag();
+if (location.hash === '#rag') navigate('rag');
 refresh(); setInterval(refresh, 4000);

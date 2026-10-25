@@ -25,7 +25,7 @@ class ArchiveStore:
         self.capture_failed = False
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3):
+            if version not in (0, 1, 2, 3, 4):
                 raise GatewayError("archive_version", "Unsupported archive schema version.")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS chats (
@@ -59,7 +59,10 @@ class ArchiveStore:
             from tg_mcp.memory import MEMORY_SCHEMA
 
             db.executescript(MEMORY_SCHEMA)
-            db.execute("PRAGMA user_version=3")
+            from tg_mcp.loading import SCHEMA
+
+            db.executescript(SCHEMA)
+            db.execute("PRAGMA user_version=4")
 
     @contextmanager
     def connect(self):
@@ -476,4 +479,5 @@ class ArchiveStore:
             db.execute("DELETE FROM chats WHERE " + where, params)
             if chat is None:
                 db.execute("DELETE FROM projects WHERE account=?", (account,))
+                db.execute("DELETE FROM rag_loading WHERE account=?", (account,))
         return {"account_id": account, "chat_id": chat, "purged": True}

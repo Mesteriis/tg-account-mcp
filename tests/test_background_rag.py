@@ -221,3 +221,30 @@ def test_automatic_metadata_refresh_does_not_erase_chat_title(worker):
     rag.archive.discover(A, "123", "Known title", False)
     rag.archive.discover(A, "123", "", False)
     assert rag.archive.status(A, "123")["title"] == "Known title"
+
+
+def test_progress_counts_only_active_nonempty_text_and_current_model(worker):
+    rag, _ = worker
+    archive = rag.archive
+    archive.configure(A, "1", "Synthetic", enabled=True, retain_deleted=False)
+    archive.ingest_page(
+        A,
+        "1",
+        [
+            {"id": "1", "text": "useful"},
+            {"id": "2", "text": "\u2003\n"},
+            {"id": "3", "text": ""},
+        ],
+        None,
+    )
+    with archive.connect() as db:
+        mid = db.execute("SELECT rowid FROM messages WHERE mid='1'").fetchone()[0]
+        db.execute("INSERT INTO message_vectors VALUES(?,?,?,?)", (mid, "old", "fp", "[1,0]"))
+    rag.model_key = "current"
+    status = rag.status(details=True)
+    assert status["archived_messages"] == 3
+    assert status["eligible_messages"] == status["pending_messages"] == 1
+    assert status["indexed_messages"] == 0
+    assert status["history_complete_chats"] == 1
+    assert status["chats"][0]["title"] == "Synthetic"
+    assert "useful" not in str(status)

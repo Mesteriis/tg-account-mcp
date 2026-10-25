@@ -6,6 +6,7 @@ import contextlib
 import io
 import logging
 import sqlite3
+from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -100,20 +101,37 @@ class IdentityManager:
             await asyncio.sleep(delay)
 
     async def _sync_archives(self) -> int:
-        delay = 60
+        accounts = defaultdict(list)
         for chat in self.archive.configured():
+            accounts[chat["account"]].append(chat)
+
+        async def sync_account(chats):
+            for chat in chats:
+                try:
+                    gateway = await self.user_gateway(chat["account"])
+                    # Two paced history pages, up to 60s each, plus network time.
+                    async with asyncio.timeout(180):
+                        await gateway.sync_archive_chat(chat["chat"])
+                except GatewayError as exc:
+                    if exc.code != "load_paused":
+                        self.archive.sync_error(chat["account"], chat["chat"], exc.code)
+                    if exc.retry_after:
+                        break
+                except TimeoutError:
+                    self.archive.sync_error(chat["account"], chat["chat"], "unavailable")
+
+        async def guarded_sync(chats):
             try:
-                gateway = await self.user_gateway(chat["account"])
-                async with asyncio.timeout(30):
-                    await gateway.sync_archive_chat(chat["chat"])
-            except GatewayError as exc:
-                self.archive.sync_error(chat["account"], chat["chat"], exc.code)
-                if exc.retry_after:
-                    delay = max(delay, exc.retry_after)
-                    break
-            except TimeoutError:
-                self.archive.sync_error(chat["account"], chat["chat"], "unavailable")
-        return delay
+                await sync_account(chats)
+            except (OSError, sqlite3.Error, LocalError):
+                self.archive.capture_failed = True
+                logging.getLogger("tg_mcp").error("Archive synchronization storage failed")
+
+        # Each account advances independently; a paced read cannot delay another account.
+        async with asyncio.TaskGroup() as group:
+            for chats in accounts.values():
+                group.create_task(guarded_sync(chats))
+        return 60
 
     async def close(self) -> None:
         if self.rag:

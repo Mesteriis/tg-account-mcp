@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import math
 import re
 import sqlite3
 from collections import deque
@@ -20,6 +19,7 @@ from tg_mcp.archive import ArchiveStore
 from tg_mcp.config import Credentials
 from tg_mcp.cursors import Cursors, query_context
 from tg_mcp.errors import GatewayError, LocalError, telegram_errors, validate_text
+from tg_mcp.loading import AdaptiveLoading
 from tg_mcp.storage import StateStore
 
 _WORDS = re.compile(r"\w+", re.UNICODE)
@@ -102,7 +102,7 @@ class UserGateway:
         self.archive = archive
         self.auto_archive = auto_archive
         self._archive_sync_lock = asyncio.Lock()
-        self._archive_retry_until = 0.0
+        self.loading = AdaptiveLoading(archive, identity_id) if archive else None
         self.cursors = Cursors(cursor_secret)
         self._updates: deque[dict] = deque(maxlen=2_000)
         self._update_sequence = 0
@@ -1380,28 +1380,39 @@ class UserGateway:
     async def discover_archives(self) -> int:
         if self.archive is None:
             raise GatewayError("unavailable", "Archive storage is unavailable.")
-        discovered = 0
-        with telegram_errors():
-            await self._authorized()
-            async for dialog in self.client.iter_dialogs(limit=None):
-                if self.auto_archive is not None and not self.auto_archive():
-                    break
-                discovered += self.archive.discover(
-                    self.identity_id, str(dialog.id), dialog.name or "", bool(dialog.is_channel)
-                )
-                await asyncio.sleep(0)
-        return discovered
+        async with self.loading.request() as interval:
+            discovered = 0
+            with telegram_errors():
+                await self._authorized()
+                dialogs = self.client.iter_dialogs(limit=None)
+                # Telethon RequestIter paces each native dialog page, not each item.
+                if hasattr(dialogs, "wait_time"):
+                    dialogs.wait_time = interval
+                async for dialog in dialogs:
+                    if self.auto_archive is not None and not self.auto_archive():
+                        break
+                    discovered += self.archive.discover(
+                        self.identity_id, str(dialog.id), dialog.name or "", bool(dialog.is_channel)
+                    )
+                    await asyncio.sleep(0)
+            return discovered
 
     async def sync_archive_chat(self, chat_id: str, *, restart: bool = False) -> dict:
         async with self._archive_sync_lock:
-            remaining = self._archive_retry_until - asyncio.get_running_loop().time()
-            if remaining > 0:
-                raise GatewayError(
-                    "rate_limited", "Wait before archive synchronization.", math.ceil(remaining)
-                )
             if restart and self.archive is not None:
+                # A paused request must not reset durable history progress.
+                state = self.loading.state()
+                if max(state["cooldown_until"], state["next_request"]) > self.loading.clock():
+                    raise GatewayError("load_paused", "Background loading is scheduled later.", 5)
                 self.archive.reset_sync(self.identity_id, chat_id)
             return await self._sync_archive_chat(chat_id)
+
+    async def _archive_history(self, chat_id: str, cursor: str | None) -> dict:
+        if self.loading is None:
+            raise GatewayError("unavailable", "Archive storage is unavailable.")
+        async with self.loading.request():
+            # history asks for limit+1; 99 keeps the request within one native 100-item page.
+            return await self.history(chat_id, limit=99, cursor=cursor)
 
     async def _sync_archive_chat(self, chat_id: str) -> dict:
         if self.archive is None:
@@ -1411,23 +1422,22 @@ class UserGateway:
             raise GatewayError("archive_disabled", "This chat archive is disabled.")
         try:
             progress = self.archive.head_progress(self.identity_id, chat_id)
-            head = await self.history(chat_id, limit=100, cursor=progress["cursor"])
+            head = await self._archive_history(chat_id, progress["cursor"])
             self.archive.ingest_head(
                 self.identity_id, chat_id, head["messages"], head["next_cursor"]
             )
             if config["cursor"] is None and progress["cursor"] is None:
                 page = head
             else:
-                page = await self.history(chat_id, limit=100, cursor=config["cursor"])
+                page = await self._archive_history(chat_id, config["cursor"])
             self.archive.ingest_page(
                 self.identity_id, chat_id, page["messages"], page["next_cursor"]
             )
         except GatewayError as exc:
             if exc.code == "invalid_cursor":
                 self.archive.reset_sync(self.identity_id, chat_id)
-            if exc.retry_after:
-                self._archive_retry_until = asyncio.get_running_loop().time() + exc.retry_after
-            self.archive.sync_error(self.identity_id, chat_id, exc.code)
+            if exc.code != "load_paused":
+                self.archive.sync_error(self.identity_id, chat_id, exc.code)
             raise
         return self.archive.status(self.identity_id, chat_id)
 

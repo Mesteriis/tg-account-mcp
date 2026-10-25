@@ -18,6 +18,7 @@
         <button class="nav-item active" data-view="overview"><i class="ph ph-house" aria-hidden="true"></i><span>Обзор</span></button>
         <button class="nav-item" data-view="accounts"><i class="ph ph-user" aria-hidden="true"></i><span>Аккаунты</span><span class="nav-count" id="accountsNavCount">0</span></button>
         <button class="nav-item" data-view="bots"><i class="ph ph-robot" aria-hidden="true"></i><span>Боты</span><span class="nav-count" id="botsNavCount">0</span></button>
+        <button class="nav-item" data-view="rag"><i class="ph ph-magnifying-glass" aria-hidden="true"></i><span>RAG</span></button>
         <button class="nav-item" data-view="activity"><i class="ph ph-chart-bar" aria-hidden="true"></i><span>Активность</span></button>
         <button class="nav-item" data-view="access"><i class="ph ph-key" aria-hidden="true"></i><span>Доступ MCP</span></button>
         <button class="nav-item" data-view="settings"><i class="ph ph-gear" aria-hidden="true"></i><span>Настройки</span></button>
@@ -105,6 +106,30 @@
       <section class="view" data-page="activity">
         <div class="section-head"><div><h2>Активность</h2><p>Полная история вызовов MCP без содержимого сообщений и поисковых запросов.</p></div></div>
         <article class="panel activity-panel standalone" id="activityStandalone"></article>
+      </section>
+
+      <section class="view" data-page="rag" aria-label="Фоновая индексация RAG">
+        <p id="ragState" class="rag-state" role="status">Загрузка состояния RAG…</p>
+        <div id="ragDetails" hidden>
+          <article class="panel rag-progress">
+            <h2>Загрузка истории Telegram</h2>
+            <p id="ragHistory"></p>
+            <p class="rag-muted">Общий объём сообщений станет известен после загрузки истории всех чатов. Новые сообщения продолжают поступать в фоне.</p>
+            <h2>Семантический индекс</h2>
+            <p id="ragIndex"></p>
+            <progress id="ragProgress" max="100" value="0" aria-label="Индекс сохранённых текстов"></progress>
+            <p id="ragModel" class="rag-muted"></p>
+            <p id="ragTimes" class="rag-muted"></p>
+          </article>
+          <article class="panel rag-panel">
+            <div class="panel-head"><div><h2>Темп загрузки по аккаунтам</h2><p>После лимита интервал удваивается. После двух часов стабильной работы уменьшается на 20%.</p></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Аккаунт</th><th>Интервал</th><th>Пауза Telegram до</th><th>Последний лимит</th><th>Лимитов</th></tr></thead><tbody id="ragAccounts"></tbody></table></div>
+          </article>
+          <article class="panel rag-panel">
+            <div class="panel-head"><div><h2>Чаты, группы и каналы</h2><p id="ragChatSummary"></p></div><label class="rag-filter"><span>Показать</span><select id="ragFilter"><option value="all">Все чаты</option><option value="errors">С ограничениями и ошибками</option><option value="pending">История ещё загружается</option></select></label></div>
+            <div class="table-wrap"><table><thead><tr><th>Чат / аккаунт</th><th>История</th><th>Тексты / индекс</th><th>Последняя загрузка</th><th>Состояние</th></tr></thead><tbody id="ragChats"></tbody></table></div>
+          </article>
+        </div>
       </section>
 
       <section class="view" data-page="access">

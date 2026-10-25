@@ -76,18 +76,17 @@ class BackgroundRAG:
         ready = self.ready_accounts()
         with self.archive.connect() as db:
             chats = db.execute(
-                "SELECT c.account,c.chat FROM chats c JOIN messages m "
-                "ON m.account=c.account AND m.chat=c.chat WHERE c.enabled=1 "
+                "SELECT c.account,c.chat FROM chats c WHERE c.enabled=1 AND EXISTS "
+                "(SELECT 1 FROM messages m WHERE m.account=c.account AND m.chat=c.chat "
                 "AND m.deleted_at IS NULL AND trim(m.text,?)!='' AND NOT EXISTS "
-                "(SELECT 1 FROM message_vectors v WHERE v.message=m.rowid AND v.model=?) "
-                "GROUP BY c.account,c.chat",
+                "(SELECT 1 FROM message_vectors v WHERE v.message=m.rowid AND v.model=?))",
                 (WHITESPACE, key),
             ).fetchall()
             projects = db.execute(
-                "SELECT p.account,p.id FROM projects p JOIN project_memories m "
-                "ON m.project=p.id WHERE m.state='approved' AND NOT EXISTS "
-                "(SELECT 1 FROM memory_vectors v WHERE v.memory=m.id AND v.model=?) "
-                "GROUP BY p.account,p.id",
+                "SELECT p.account,p.id FROM projects p WHERE EXISTS "
+                "(SELECT 1 FROM project_memories m WHERE m.project=p.id AND m.state='approved' "
+                "AND NOT EXISTS (SELECT 1 FROM memory_vectors v "
+                "WHERE v.memory=m.id AND v.model=?))",
                 (key,),
             ).fetchall()
         return [("archive", r[0], r[1]) for r in chats if r[0] in ready] + [
@@ -104,7 +103,7 @@ class BackgroundRAG:
             if monotonic() - self._last_warm > 300:
                 await self.provider.embed(["Local background embedding readiness probe"], key)
                 self._last_warm = monotonic()
-            return
+            return False
         job = min(jobs, key=lambda item: (self._served.get(item, 0), item))
         self._served[job] = monotonic()
         result = await self.index.index(*job, limit=self.settings.rag_batch_size)
@@ -112,6 +111,7 @@ class BackgroundRAG:
         self.indexed += result["indexed"]
         self.last_index = now()
         self._last_warm = monotonic()
+        return True
 
     async def discovery_loop(self):
         while True:
@@ -131,7 +131,9 @@ class BackgroundRAG:
             delay = self.settings.rag_index_interval
             try:
                 async with asyncio.timeout(45):
-                    await self.index_once()
+                    worked = await self.index_once()
+                if worked is False:
+                    delay = max(delay, 1)
                 failures = 0
                 self.errors["index"] = None
             except GatewayError as exc:

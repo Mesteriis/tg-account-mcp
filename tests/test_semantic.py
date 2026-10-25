@@ -329,3 +329,25 @@ async def test_project_vector_filter_also_binds_account(index):
     await semantic.index("memory", A, project)
     wrong = await semantic.search("memory", "acct_bbbbbbbbbbbbbbbb", project, "queue")
     assert not wrong["results"] and wrong["eligible_count"] == 0
+
+
+async def test_long_post_is_embedded_in_full_and_larger_input_fails_explicitly(monkeypatch):
+    inputs = []
+
+    def handler(request):
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json=tags())
+        body = json.loads(request.content)
+        assert body["truncate"] is False
+        inputs.extend(body["input"])
+        return httpx.Response(200, json={"embeddings": [[1] + [0] * 31]})
+
+    provider = local_provider(monkeypatch, handler)
+    key = await provider.model_key()
+    text = "long post " * 819 + "!!"
+    assert len(text) == 8192
+    assert len(await provider.embed([text], key)) == 1
+    assert inputs == [text]
+    with pytest.raises(GatewayError, match="invalid_request"):
+        await provider.embed([text + "!"], key)
+    assert inputs == [text]

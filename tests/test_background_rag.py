@@ -248,3 +248,37 @@ def test_progress_counts_only_active_nonempty_text_and_current_model(worker):
     assert status["history_complete_chats"] == 1
     assert status["chats"][0]["title"] == "Synthetic"
     assert "useful" not in str(status)
+
+
+def test_fractional_index_interval_from_environment(tmp_path, monkeypatch):
+    monkeypatch.setenv("TG_MCP_RAG_INDEX_INTERVAL", "0.1")
+    assert Settings.from_env(tmp_path).rag_index_interval == 0.1
+    for invalid in ["0", "0.01", "nan", "inf", "301"]:
+        monkeypatch.setenv("TG_MCP_RAG_INDEX_INTERVAL", invalid)
+        with pytest.raises(ValidationError):
+            Settings.from_env(tmp_path)
+
+
+async def test_pending_scopes_exclude_complete_disabled_and_wrong_accounts(worker):
+    rag, _ = worker
+    for account, chat in [(A, "1"), (A, "2"), (A, "3"), (B, "4")]:
+        rag.archive.configure(account, chat, "Synthetic", enabled=True, retain_deleted=False)
+        rag.archive.ingest_page(account, chat, [{"id": "1", "text": "sample"}], None)
+    await rag.index.index("archive", A, "1")
+    rag.archive.configure(A, "3", "Paused", enabled=False, retain_deleted=False)
+    assert set(rag.jobs("synthetic")) == {("archive", A, "2")}
+    assert set(rag.jobs("new-model")) == {("archive", A, "1"), ("archive", A, "2")}
+
+
+@pytest.mark.parametrize("worked,delay", [(True, 0.1), (False, 1)])
+async def test_fast_indexing_yields_but_idle_queue_does_not_busy_poll(
+    worker, monkeypatch, worked, delay
+):
+    rag, _ = worker
+    rag.settings = rag.settings.model_copy(update={"rag_index_interval": 0.1})
+    rag.index_once = AsyncMock(return_value=worked)
+    sleep = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr("tg_mcp.background.asyncio.sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await rag.index_loop()
+    sleep.assert_awaited_once_with(delay)

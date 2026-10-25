@@ -282,3 +282,23 @@ async def test_fast_indexing_yields_but_idle_queue_does_not_busy_poll(
     with pytest.raises(asyncio.CancelledError):
         await rag.index_loop()
     sleep.assert_awaited_once_with(delay)
+
+
+async def test_server_metrics_sample_archive_without_dashboard_polling(worker, monkeypatch):
+    rag, _ = worker
+    stamp = [0]
+    monkeypatch.setattr("tg_mcp.background.monotonic", lambda: stamp[0])
+    rag.archive.configure(A, "1", "Synthetic", enabled=True, retain_deleted=False)
+    rag.archive.ingest_page(A, "1", [{"id": str(i), "text": "sample"} for i in range(20)], None)
+    for t in range(0, 31, 10):
+        stamp[0] = t
+        rag.archive.ingest_page(
+            A, "1", [{"id": str(20 + t + i), "text": "new sample"} for i in range(2)], None
+        )
+        await rag.index_once()
+        rag.sample_metrics()
+    result = rag.metrics.snapshot(30, rag.metrics.scope, 12)
+    assert result["index_per_second"] == 0.4
+    assert result["incoming_per_second"] == 0.2
+    assert result["queue_per_second"] == -0.2
+    assert result["eta_seconds"] == 60

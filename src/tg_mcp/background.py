@@ -8,6 +8,7 @@ from time import monotonic
 
 from tg_mcp.archive import now
 from tg_mcp.errors import GatewayError, LocalError
+from tg_mcp.rag_metrics import SAMPLE_INTERVAL, RAGMetrics
 from tg_mcp.semantic import WHITESPACE, OllamaEmbeddings, SemanticIndex
 
 
@@ -24,6 +25,8 @@ class BackgroundRAG:
         self.errors = {"discovery": None, "index": None}
         self.model_key = None
         self.indexed = 0
+        self.archive_indexed = 0
+        self.metrics = RAGMetrics()
         self._served = {}
         self._retry = {}
         self._discovery_errors = {}
@@ -33,6 +36,7 @@ class BackgroundRAG:
         self.tasks = [
             asyncio.create_task(self.discovery_loop(), name="tg-mcp-rag-discovery"),
             asyncio.create_task(self.index_loop(), name="tg-mcp-rag-index"),
+            asyncio.create_task(self.metrics_loop(), name="tg-mcp-rag-metrics"),
         ]
 
     async def close(self):
@@ -109,6 +113,8 @@ class BackgroundRAG:
         result = await self.index.index(*job, limit=self.settings.rag_batch_size)
         self.model_key = result["model_key"]
         self.indexed += result["indexed"]
+        if job[0] == "archive":
+            self.archive_indexed += result["indexed"]
         self.last_index = now()
         self._last_warm = monotonic()
         return True
@@ -150,6 +156,38 @@ class BackgroundRAG:
                 delay = max(delay, min(300, 5 * 2 ** min(failures, 6)))
             await asyncio.sleep(delay)
 
+    def sample_metrics(self):
+        if self.model_key is None:
+            return
+        with self.archive.connect() as db:
+            chats = db.execute("SELECT account,chat FROM chats WHERE enabled=1").fetchall()
+            row = db.execute(
+                "SELECT count(*) AS eligible,coalesce(sum(EXISTS "
+                "(SELECT 1 FROM message_vectors v WHERE v.message=m.rowid AND v.model=?)),0) "
+                "AS indexed FROM messages m JOIN chats c USING(account,chat) "
+                "WHERE c.enabled=1 AND m.deleted_at IS NULL AND trim(m.text,?)!=''",
+                (self.model_key, WHITESPACE),
+            ).fetchone()
+        scope = self.metrics_scope(chats)
+        self.metrics.observe(
+            monotonic(), scope, row["eligible"], row["indexed"], self.archive_indexed
+        )
+
+    def metrics_scope(self, chats):
+        return (
+            self.model_key,
+            tuple(sorted((r["account"], r["chat"]) for r in chats)),
+            tuple(sorted(self.ready_accounts())),
+        )
+
+    async def metrics_loop(self):
+        while True:
+            try:
+                self.sample_metrics()
+            except (OSError, sqlite3.Error, LocalError, GatewayError):
+                logging.getLogger("tg_mcp").error("Background RAG metrics sample failed")
+            await asyncio.sleep(SAMPLE_INTERVAL)
+
     def status(self, *, details=False):
         with self.archive.connect() as db:
             rows = db.execute(
@@ -170,9 +208,19 @@ class BackgroundRAG:
         messages = sum(row["archived"] for row in chat_details)
         vectors = sum(row["indexed"] for row in chat_details)
         eligible = sum(row["eligible"] for row in chat_details)
+        running = bool(self.tasks) and all(not t.done() for t in self.tasks)
+        scope = self.metrics_scope(chat_details)
+        throughput = self.metrics.snapshot(
+            monotonic(),
+            scope,
+            eligible - vectors if self.model_key else None,
+            paused=not running or bool(self.errors["index"]),
+            blocked=bool({r["account"] for r in chat_details} - self.ready_accounts()),
+        )
         return {
             "enabled": True,
-            "running": bool(self.tasks) and all(not t.done() for t in self.tasks),
+            "running": running,
+            "throughput": throughput,
             "ready_accounts": len(self.ready_accounts()),
             "selected_chats": chats,
             "archived_messages": messages,

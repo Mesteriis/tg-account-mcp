@@ -121,3 +121,22 @@ message or project content. Stop the service and take a consistent private state
 before upgrading. A rollback needs the matching old database and package, not just the old code.
 The usual test suite covers future accounts, fairness, reconnect checkpoints, exclusions, edits,
 rate limits, cancellation and failed inference retries using synthetic data and fake providers.
+
+## Live rates and queue estimate
+
+The server samples active archive text/vector counts every ten seconds, even with the dashboard
+closed. The RAG page displays background archive indexing throughput, net eligible-text inflow,
+net queue change, and up to five minutes of queue history. Rates use roughly the last minute,
+with at least 30 seconds of samples. Background throughput counts completed archive embeddings;
+approved project-memory embeddings and manual indexing are not included in that rate. Inflow is
+the net change in saved eligible texts, not a count of Telegram network events. Edits/deletions
+and manual indexing also affect the observed queue change.
+
+The estimate is `current pending texts / observed net queue drain per second`, so incoming texts
+are included. A growing or flat queue has no finite estimate. Paused indexing, unavailable accounts,
+stale samples and insufficient data have explicit states. The estimate assumes the observed pace
+continues and refers to the current queue, not completion of all Telegram history. Large arrival
+bursts can change it sharply. Samples live in bounded process memory; restart, model/scope/readiness
+changes, a sampling gap over 30 seconds, a decrease in eligible text count, or a reset processing
+counter starts a new window. Refreshing/closing the browser does not reset sampling. No message
+text is stored in these metrics.

@@ -481,6 +481,56 @@ async function startAccount() {
   try { await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); } catch (error) { showNotice(error.message); }
 }
 
+function renderRagThroughput(rag, stale) {
+  const metrics = rag.throughput || {};
+  const unavailable = stale || !rag.running || ['stale', 'paused'].includes(metrics.state);
+  const rate = (value, signed = false) => unavailable || value == null ? '—'
+    : `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ru-RU', {maximumFractionDigits: 2})} текстов/с`;
+  $('ragIndexRate').textContent = rate(metrics.index_per_second);
+  $('ragIncomingRate').textContent = rate(metrics.incoming_per_second, true);
+  $('ragQueueRate').textContent = rate(metrics.queue_per_second, true);
+  $('ragQueueRate').classList.toggle('rag-warning', !unavailable && metrics.queue_per_second > 0);
+  const age = (seconds) => seconds >= 60 ? `${Math.round(seconds / 60)} мин назад` : `${Math.ceil(seconds)} с назад`;
+  const history = metrics.history || [];
+  $('ragRateWindow').textContent = unavailable ? 'Нет свежих замеров скорости.'
+    : metrics.window_seconds ? `Средние скорости за ${Math.round(metrics.window_seconds)} с. Приток — изменение объёма сохранённых текстов с учётом удалений; очередь также учитывает правки.`
+    : 'Нужно минимум 30 секунд замеров. После перезапуска или изменения состава чатов окно собирается заново.';
+  const etaCopy = {
+    warming: 'Собираем замеры…', growing: 'Очередь растёт при текущем притоке',
+    stalled: 'Очередь пока не сокращается', complete: 'Текущая очередь обработана',
+    blocked: 'Часть аккаунтов недоступна', paused: 'Индексация приостановлена',
+    stale: 'Нет свежих замеров',
+  };
+  const eta = metrics.eta_seconds;
+  let forecast = etaCopy[metrics.state] || etaCopy.warming;
+  if (metrics.state === 'draining' && Number.isFinite(eta)) {
+    const minutes = Math.max(1, Math.ceil(eta / 60));
+    forecast = minutes < 60 ? `≈ ${minutes} мин` : minutes < 1440
+      ? `≈ ${Math.floor(minutes / 60)} ч ${minutes % 60} мин`
+      : `≈ ${Math.ceil(minutes / 1440)} дн.`;
+  }
+  $('ragEta').textContent = stale ? 'Нет связи с сервером' : !rag.running ? etaCopy.paused : forecast;
+  $('ragEtaNote').textContent = 'Оценка учитывает чистое сокращение текущей очереди и наблюдаемый приток. Она меняется вместе с темпом; это не срок загрузки всей истории Telegram.';
+  $('ragQueueFigure').hidden = unavailable || history.length < 2;
+  if (!unavailable && history.length >= 2) {
+    const first = history[0]; const last = history[history.length - 1];
+    const values = history.map((point) => point.pending);
+    const low = Math.min(...values); const high = Math.max(...values);
+    const span = first.age_seconds - last.age_seconds;
+    const points = history.map((point) => {
+      const x = span ? 2 + 596 * (first.age_seconds - point.age_seconds) / span : 2;
+      const y = high === low ? 40 : 74 - 68 * (point.pending - low) / (high - low);
+      return `${x},${y}`;
+    });
+    $('ragQueueLine').setAttribute('points', points.join(' '));
+    const delta = last.pending - first.pending;
+    $('ragQueueRange').textContent = `${formatNumber(first.pending)} → ${formatNumber(last.pending)} текстов · изменение ${delta > 0 ? '+' : ''}${formatNumber(delta)} · диапазон графика ${formatNumber(low)}–${formatNumber(high)}`;
+    $('ragQueueChart').setAttribute('aria-label', $('ragQueueRange').textContent);
+    $('ragQueueStart').textContent = age(first.age_seconds);
+    $('ragQueueEnd').textContent = age(last.age_seconds);
+  }
+}
+
 function renderRag(stale = ragStale) {
   ragStale = stale;
   const rag = data?.rag;
@@ -500,6 +550,7 @@ function renderRag(stale = ragStale) {
     : rag.last_error ? `Фоновая задача ожидает повторной попытки: ${rag.last_error}`
     : rag.chat_errors ? `RAG работает. Чатов с ограничениями или ошибками: ${formatNumber(rag.chat_errors)}. Подробности ниже.`
     : 'RAG работает. Данные обновляются каждые 4 секунды.';
+  renderRagThroughput(rag, stale);
   const count = (value) => value == null ? '—' : formatNumber(value);
   const date = (value) => value ? formatDateTime(value) : '—';
   const epoch = (value) => value ? date(value * 1000) : '—';

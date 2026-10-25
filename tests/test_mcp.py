@@ -12,9 +12,11 @@ import uvicorn
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
 
+from tg_mcp.archive import ArchiveStore
 from tg_mcp.config import Settings
 from tg_mcp.errors import GatewayError
 from tg_mcp.server import create_app
+from tg_mcp.storage import StateStore
 
 TOKEN = secrets.token_urlsafe(32)
 ACCOUNT_A = "acct_aaaaaaaaaaaaaaaa"
@@ -158,6 +160,7 @@ class FakeManager:
 @pytest.fixture
 async def endpoint(tmp_path):
     manager = FakeManager()
+    manager.archive = ArchiveStore(StateStore(tmp_path))
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
     port = sock.getsockname()[1]
@@ -191,6 +194,13 @@ async def test_real_sdk_lists_tools_and_routes_explicit_ids(endpoint, mode):
     async with connected(url, mode=mode) as client:
         tools = (await client.list_tools()).tools
         assert {tool.name for tool in tools} == {
+            "configure_chat_archive",
+            "sync_chat_archive",
+            "get_archive_status",
+            "search_archive",
+            "get_message_versions",
+            "export_chat_archive",
+            "purge_chat_archive",
             "get_status",
             "list_accounts",
             "list_bots",
@@ -400,3 +410,133 @@ async def test_auth_and_oversized_body(endpoint):
             headers={"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"},
         )
         assert response.status_code == 413
+
+
+async def test_archive_tools_enforce_chat_account_and_admin_scopes(endpoint):
+    url, manager = endpoint
+    archive = manager.archive
+    for account, chat, text in [
+        (ACCOUNT_A, "123", "SQLite chosen"),
+        (ACCOUNT_A, "456", "private secret"),
+        (ACCOUNT_B, "123", "other account secret"),
+    ]:
+        archive.configure(account, chat, "Synthetic", enabled=True, retain_deleted=True)
+        archive.ingest_page(
+            account,
+            chat,
+            [{"id": "1", "text": text, "date": "2026-10-25T10:00:00+00:00", "sender_id": "7"}],
+            None,
+        )
+    async with connected(url) as client:
+        created = await client.call_tool(
+            "create_agent_token",
+            {
+                "label": "Archive reader",
+                "scopes": ["read"],
+                "identity_ids": [ACCOUNT_A],
+                "chat_ids": ["123"],
+            },
+        )
+        token = created.structured_content["token"]
+    async with connected(url, token=token) as client:
+        args = {"account_id": ACCOUNT_A, "chat_id": "123"}
+        found = await client.call_tool("search_archive", {**args, "query": "SQLite"})
+        assert not found.is_error
+        assert found.structured_content["messages"][0]["text"] == "SQLite chosen"
+        for name, extra in [
+            ("get_archive_status", {}),
+            ("search_archive", {"query": "secret"}),
+            ("export_chat_archive", {}),
+            ("get_message_versions", {"message_id": "1"}),
+        ]:
+            assert not (await client.call_tool(name, {**args, **extra})).is_error
+            for denied in [{**args, "chat_id": "456"}, {**args, "account_id": ACCOUNT_B}]:
+                assert (await client.call_tool(name, {**denied, **extra})).is_error
+        for name in ["configure_chat_archive", "sync_chat_archive", "purge_chat_archive"]:
+            assert (await client.call_tool(name, args)).is_error
+        # The admin check precedes upstream chat metadata or any mutation.
+        manager.users[ACCOUNT_A].chat_info.assert_not_awaited()
+        assert archive.status(ACCOUNT_A, "123")["message_count"] == 1
+        assert (
+            await client.call_tool(
+                "search_archive", {**args, "query": "SQLite", "date_from": "2026-02-30"}
+            )
+        ).is_error
+
+
+async def test_archive_search_cursor_is_bound_to_chat_query_and_filters(endpoint):
+    url, manager = endpoint
+    for chat in ["123", "456"]:
+        manager.archive.configure(ACCOUNT_A, chat, "Synthetic", enabled=True, retain_deleted=True)
+        manager.archive.ingest_page(
+            ACCOUNT_A,
+            chat,
+            [
+                {"id": str(i), "text": "SQLite decision", "date": "2026-10-25T10:00:00+00:00"}
+                for i in range(1, 4)
+            ],
+            None,
+        )
+    async with connected(url) as client:
+        args = {"account_id": ACCOUNT_A, "chat_id": "123", "query": "SQLite", "limit": 2}
+        first = await client.call_tool("search_archive", args)
+        cursor = first.structured_content["next_cursor"]
+        assert cursor
+        second = await client.call_tool("search_archive", {**args, "cursor": cursor})
+        assert len(second.structured_content["messages"]) == 1
+        for change in [{"chat_id": "456"}, {"query": "decision"}, {"include_deleted": True}]:
+            assert (
+                await client.call_tool("search_archive", {**args, "cursor": cursor, **change})
+            ).is_error
+        versions = await client.call_tool(
+            "get_message_versions", {"account_id": ACCOUNT_A, "chat_id": "123", "message_id": "1"}
+        )
+        assert versions.structured_content["versions"][0]["message"]["text"] == "SQLite decision"
+        purged = await client.call_tool(
+            "purge_chat_archive", {"account_id": ACCOUNT_A, "chat_id": "123"}
+        )
+        assert purged.structured_content["purged"]
+        assert (await client.call_tool("search_archive", args)).is_error
+        assert manager.archive.status(ACCOUNT_A, "456")["message_count"] == 3
+
+
+async def test_pause_archive_preserves_retention_unless_explicitly_changed(endpoint):
+    url, manager = endpoint
+    manager.archive.configure(ACCOUNT_A, "123", "Synthetic", enabled=True, retain_deleted=True)
+    manager.archive.ingest_page(ACCOUNT_A, "123", [{"id": "1", "text": "retained"}], None)
+    manager.archive.record(ACCOUNT_A, "deleted_messages", {"chat_id": "123", "message_ids": ["1"]})
+    async with connected(url) as client:
+        args = {"account_id": ACCOUNT_A, "chat_id": "123", "enabled": False}
+        paused = await client.call_tool("configure_chat_archive", args)
+        assert not paused.is_error
+        assert paused.structured_content["retain_deleted"] is True
+        assert manager.archive.search(ACCOUNT_A, "123", "retained", include_deleted=True)[
+            "messages"
+        ]
+        erased = await client.call_tool("configure_chat_archive", {**args, "retain_deleted": False})
+        assert not erased.is_error
+        assert not manager.archive.search(ACCOUNT_A, "123", "retained", include_deleted=True)[
+            "messages"
+        ]
+
+
+async def test_disabled_account_blocks_archive_reads_but_allows_admin_cleanup(endpoint):
+    url, manager = endpoint
+    manager.archive.configure(ACCOUNT_A, "123", "Synthetic", enabled=True, retain_deleted=True)
+    original = manager.list_accounts
+    manager.list_accounts = lambda: [
+        {**row, "enabled": False, "status": "disabled"} for row in original()
+    ]
+    async with connected(url) as client:
+        args = {"account_id": ACCOUNT_A, "chat_id": "123"}
+        for name, extra in [
+            ("get_archive_status", {}),
+            ("search_archive", {"query": "test"}),
+            ("get_message_versions", {"message_id": "1"}),
+            ("export_chat_archive", {}),
+        ]:
+            assert (await client.call_tool(name, {**args, **extra})).is_error
+        paused = await client.call_tool("configure_chat_archive", {**args, "enabled": False})
+        assert not paused.is_error
+        purged = await client.call_tool("purge_chat_archive", args)
+        assert purged.structured_content["purged"] is True

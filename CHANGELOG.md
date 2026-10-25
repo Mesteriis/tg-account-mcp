@@ -5,6 +5,14 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Opt-in SQLite chat archives with live message/edit/deletion capture, resumable background
+  history scans, literal full-text search, version retrieval, bounded JSON export and purge.
+  Archive tools enforce account/chat token scopes; configuration and cleanup require admin.
+  Deleted text is retained only when explicitly enabled. Account deletion purges its archive.
+
+
 ## [0.7.1] - 2026-10-18
 
 ### Added

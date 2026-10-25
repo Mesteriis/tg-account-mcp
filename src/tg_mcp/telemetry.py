@@ -19,6 +19,13 @@ _IDENTITY = re.compile(r"^(?:acct|bot)_[a-z2-7]{16}$")
 _AGENT = re.compile(r"^agent_[a-z2-7]{16}$")
 _CHAT = re.compile(r"^-?[1-9][0-9]{0,18}$")
 _OPERATIONS = {
+    "configure_chat_archive",
+    "sync_chat_archive",
+    "get_archive_status",
+    "search_archive",
+    "get_message_versions",
+    "export_chat_archive",
+    "purge_chat_archive",
     "get_status",
     "list_accounts",
     "list_bots",
@@ -65,6 +72,13 @@ _OPERATIONS = {
     "revoke_agent_token",
 }
 _CATEGORIES = {
+    "configure_chat_archive": "send",
+    "sync_chat_archive": "read",
+    "get_archive_status": "read",
+    "search_archive": "search",
+    "get_message_versions": "read",
+    "export_chat_archive": "read",
+    "purge_chat_archive": "send",
     "get_status": "read",
     "list_accounts": "read",
     "list_bots": "read",

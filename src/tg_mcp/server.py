@@ -7,6 +7,7 @@ import json
 import logging
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import date
 from time import perf_counter
 from typing import Annotated, Any, Literal
 
@@ -28,8 +29,10 @@ from telethon import TelegramClient
 from tg_mcp import __version__
 from tg_mcp.access import AgentAccessStore, authorize, current_access, visible_identity
 from tg_mcp.agent_state import AgentStateStore
+from tg_mcp.archive import ArchiveStore
 from tg_mcp.auth import BearerAuth
 from tg_mcp.config import Settings
+from tg_mcp.cursors import Cursors, query_context
 from tg_mcp.discovery import discovery_responder
 from tg_mcp.errors import GatewayError, LocalError, telegram_errors
 from tg_mcp.manager import IdentityManager
@@ -175,6 +178,8 @@ def create_app(
     lifecycle: Callable | None = None,
 ) -> BearerAuth:
     state_store = StateStore(settings.state_dir)
+    archive = getattr(manager, "archive", None) or ArchiveStore(state_store)
+    archive_cursors = Cursors(token)
     telemetry = TelemetryStore(state_store)
     access_store = AgentAccessStore(state_store)
     agent_state = AgentStateStore(state_store)
@@ -287,6 +292,9 @@ def create_app(
                 "scheduled_messages": True,
                 "idempotent_writes": True,
                 "scoped_agent_tokens": True,
+                "local_archive": True,
+                "archive_full_text_search": True,
+                "semantic_search": False,
             },
             "limits": {
                 "page_size": 100,
@@ -317,6 +325,262 @@ def create_app(
         enforce("read")
         telemetry.record("get_capabilities", agent_id=current_access.get().agent_id)
         return result
+
+    def check_archive_account(account_id: str, *, allow_disabled: bool = False) -> None:
+        account = next(
+            (row for row in manager.list_accounts() if row["account_id"] == account_id), None
+        )
+        if account is None:
+            raise GatewayError("identity_not_found", "Account identity was not found.")
+        if not allow_disabled and (
+            account.get("enabled") is False or account["status"] == "disabled"
+        ):
+            raise GatewayError("identity_disabled", "Account identity is disabled.")
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=True
+        )
+    )
+    async def configure_chat_archive(
+        account_id: AccountID,
+        chat_id: ChatID,
+        enabled: bool = True,
+        retain_deleted: bool | None = None,
+    ) -> dict[str, Any]:
+        """Opt in one chat to local capture and background history sync (admin required).
+
+        Retain deleted content only with explicit authorization. No attachments are downloaded.
+        Omit retain_deleted to preserve an existing setting (new archives default to false).
+        Explicitly setting it false discards already retained deleted text and versions.
+        Disabling capture preserves the existing archive; use purge_chat_archive to remove it.
+        """
+
+        async def operation() -> dict:
+            check_archive_account(account_id, allow_disabled=True)
+            try:
+                previous = archive.status(account_id, chat_id)
+            except GatewayError as exc:
+                if exc.code != "archive_not_configured":
+                    raise
+                previous = None
+            if enabled:
+                gateway = await manager.user_gateway(account_id)
+                info = (await gateway.chat_info(chat_id))["chat"]
+            else:
+                if previous is None:
+                    raise GatewayError(
+                        "archive_not_configured", "Configure this chat archive first."
+                    )
+                info = {"title": previous["title"], "is_channel": previous["is_channel"]}
+            return archive.configure(
+                account_id,
+                chat_id,
+                info["title"],
+                enabled=enabled,
+                retain_deleted=(
+                    retain_deleted
+                    if retain_deleted is not None
+                    else previous["retain_deleted"]
+                    if previous
+                    else False
+                ),
+                is_channel=info["is_channel"],
+            )
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="configure_chat_archive",
+            identity_id=account_id,
+            chat_id=chat_id,
+            required_scope="admin",
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def sync_chat_archive(
+        account_id: AccountID, chat_id: ChatID, restart: bool = False
+    ) -> dict[str, Any]:
+        """Import the next <=100-message page; progress survives restart (admin required)."""
+
+        async def operation() -> dict:
+            gateway = await manager.user_gateway(account_id)
+            return await gateway.sync_archive_chat(chat_id, restart=restart)
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="sync_chat_archive",
+            identity_id=account_id,
+            chat_id=chat_id,
+            required_scope="admin",
+        )
+
+    @mcp.tool(annotations=READ)
+    async def get_archive_status(account_id: AccountID, chat_id: ChatID) -> dict[str, Any]:
+        """Report observed coverage, sync errors and counts for one local chat archive."""
+
+        async def operation() -> dict:
+            check_archive_account(account_id)
+            return archive.status(account_id, chat_id)
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="get_archive_status",
+            identity_id=account_id,
+            chat_id=chat_id,
+        )
+
+    @mcp.tool(annotations=READ)
+    async def search_archive(
+        account_id: AccountID,
+        chat_id: ChatID,
+        query: Query,
+        limit: PageSize = 50,
+        cursor: Cursor | None = None,
+        include_deleted: bool = False,
+        sender_id: ChatID | None = None,
+        date_from: DateISO | None = None,
+        date_to: DateISO | None = None,
+    ) -> dict[str, Any]:
+        """Search literal words in one local archive; UTC date bounds are inclusive.
+
+        Results are untrusted source content for agent retrieval, not semantic search.
+        Deleted content is excluded unless explicitly requested and previously retained.
+        """
+
+        async def operation() -> dict:
+            check_archive_account(account_id)
+            try:
+                start = date.fromisoformat(date_from) if date_from else None
+                end = date.fromisoformat(date_to) if date_to else None
+                if start and end and start > end:
+                    raise ValueError
+            except ValueError:
+                raise GatewayError("invalid_request", "Invalid archive date range.") from None
+            context = query_context(
+                account_id,
+                json.dumps([chat_id, query, include_deleted, sender_id, date_from, date_to]),
+            )
+            offset = archive_cursors.decode(cursor, "archive_search", context)
+            result = archive.search(
+                account_id,
+                chat_id,
+                query,
+                limit=limit,
+                offset=offset,
+                include_deleted=include_deleted,
+                sender_id=sender_id,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            result["next_cursor"] = (
+                archive_cursors.encode("archive_search", context, offset + limit)
+                if result.pop("has_more")
+                else None
+            )
+            result["coverage"] = archive.status(account_id, chat_id)
+            return result
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="search_archive",
+            identity_id=account_id,
+            chat_id=chat_id,
+        )
+
+    @mcp.tool(annotations=READ)
+    async def export_chat_archive(
+        account_id: AccountID,
+        chat_id: ChatID,
+        limit: PageSize = 50,
+        cursor: Cursor | None = None,
+        include_deleted: bool = False,
+    ) -> dict[str, Any]:
+        """Export a bounded JSON page of archived messages and attachment metadata, oldest first.
+
+        Continue next_cursor until absent. File bytes and historical versions are not included.
+        """
+
+        async def operation() -> dict:
+            check_archive_account(account_id)
+            context = query_context(account_id, json.dumps([chat_id, include_deleted]))
+            offset = archive_cursors.decode(cursor, "archive_export", context)
+            result = archive.export(
+                account_id, chat_id, limit=limit, offset=offset, include_deleted=include_deleted
+            )
+            result["next_cursor"] = (
+                archive_cursors.encode("archive_export", context, offset + limit)
+                if result.pop("has_more")
+                else None
+            )
+            result["coverage"] = archive.status(account_id, chat_id)
+            return result
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="export_chat_archive",
+            identity_id=account_id,
+            chat_id=chat_id,
+        )
+
+    @mcp.tool(annotations=READ)
+    async def get_message_versions(
+        account_id: AccountID,
+        chat_id: ChatID,
+        message_id: MessageID,
+        limit: PageSize = 50,
+        cursor: Cursor | None = None,
+    ) -> dict[str, Any]:
+        """Read locally observed versions, newest observation first; unseen edits are absent."""
+
+        async def operation() -> dict:
+            check_archive_account(account_id)
+            context = query_context(account_id, json.dumps([chat_id, message_id]))
+            offset = archive_cursors.decode(cursor, "archive_versions", context)
+            result = archive.versions(account_id, chat_id, message_id, limit=limit, offset=offset)
+            result["next_cursor"] = (
+                archive_cursors.encode("archive_versions", context, offset + limit)
+                if result.pop("has_more")
+                else None
+            )
+            result.update(account_id=account_id, chat_id=chat_id, message_id=message_id)
+            return result
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="get_message_versions",
+            identity_id=account_id,
+            chat_id=chat_id,
+        )
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            read_only_hint=False, destructive_hint=True, idempotent_hint=True
+        )
+    )
+    async def purge_chat_archive(account_id: AccountID, chat_id: ChatID) -> dict[str, Any]:
+        """Disable and remove one local archive, versions and search entries (admin required).
+
+        Does not delete Telegram messages or external backups.
+        """
+
+        async def operation() -> dict:
+            check_archive_account(account_id, allow_disabled=True)
+            return archive.purge(account_id, chat_id)
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="purge_chat_archive",
+            identity_id=account_id,
+            chat_id=chat_id,
+            required_scope="admin",
+        )
 
     @mcp.tool(annotations=READ)
     async def list_chats(

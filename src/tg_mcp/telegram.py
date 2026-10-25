@@ -1,7 +1,10 @@
 """User-account operations, with bounded reads and explicit sender selection."""
 
 import asyncio
+import logging
+import math
 import re
+import sqlite3
 from collections import deque
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -12,9 +15,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from telethon import TelegramClient, events, functions, types, utils
 
 from tg_mcp import __version__
+from tg_mcp.archive import ArchiveStore
 from tg_mcp.config import Credentials
 from tg_mcp.cursors import Cursors, query_context
-from tg_mcp.errors import GatewayError, telegram_errors, validate_text
+from tg_mcp.errors import GatewayError, LocalError, telegram_errors, validate_text
 from tg_mcp.storage import StateStore
 
 _WORDS = re.compile(r"\w+", re.UNICODE)
@@ -85,10 +89,17 @@ def make_client(
 
 class UserGateway:
     def __init__(
-        self, client: TelegramClient, cursor_secret: str, identity_id: str = "acct_legacy"
+        self,
+        client: TelegramClient,
+        cursor_secret: str,
+        identity_id: str = "acct_legacy",
+        archive: ArchiveStore | None = None,
     ):
         self.client = client
         self.identity_id = identity_id
+        self.archive = archive
+        self._archive_sync_lock = asyncio.Lock()
+        self._archive_retry_until = 0.0
         self.cursors = Cursors(cursor_secret)
         self._updates: deque[dict] = deque(maxlen=2_000)
         self._update_sequence = 0
@@ -551,6 +562,7 @@ class UserGateway:
                 "id": str(utils.get_peer_id(entity)),
                 "title": utils.get_display_name(entity),
                 "kind": kind,
+                "is_channel": isinstance(peer, types.InputPeerChannel),
                 "username": getattr(entity, "username", None),
                 "verified": bool(getattr(entity, "verified", False)),
                 "bot": bool(getattr(entity, "bot", False)),
@@ -1195,6 +1207,9 @@ class UserGateway:
             "has_media": message.media is not None,
             "attachment": attachment,
         }
+        edited = getattr(message, "edit_date", None)
+        if edited is not None:
+            result["edit_date"] = edited.isoformat()
         if include_chat:
             chat_id = getattr(message, "chat_id", None)
             if chat_id is None and getattr(message, "peer_id", None) is not None:
@@ -1359,7 +1374,45 @@ class UserGateway:
             "username": getattr(entity, "username", None),
         }
 
+    async def sync_archive_chat(self, chat_id: str, *, restart: bool = False) -> dict:
+        async with self._archive_sync_lock:
+            remaining = self._archive_retry_until - asyncio.get_running_loop().time()
+            if remaining > 0:
+                raise GatewayError(
+                    "rate_limited", "Wait before archive synchronization.", math.ceil(remaining)
+                )
+            if restart and self.archive is not None:
+                self.archive.reset_sync(self.identity_id, chat_id)
+            return await self._sync_archive_chat(chat_id)
+
+    async def _sync_archive_chat(self, chat_id: str) -> dict:
+        if self.archive is None:
+            raise GatewayError("unavailable", "Archive storage is unavailable.")
+        config = next(
+            (row for row in self.archive.configured(self.identity_id) if row["chat"] == chat_id),
+            None,
+        )
+        if config is None:
+            raise GatewayError("archive_disabled", "This chat archive is disabled.")
+        try:
+            page = await self.history(chat_id, limit=100, cursor=config["cursor"])
+            self.archive.ingest_page(
+                self.identity_id, chat_id, page["messages"], page["next_cursor"]
+            )
+        except GatewayError as exc:
+            if exc.retry_after:
+                self._archive_retry_until = asyncio.get_running_loop().time() + exc.retry_after
+            self.archive.sync_error(self.identity_id, chat_id, exc.code)
+            raise
+        return self.archive.status(self.identity_id, chat_id)
+
     async def _record_update(self, kind: str, **payload) -> None:
+        if self.archive is not None:
+            try:
+                self.archive.record(self.identity_id, kind, payload)
+            except (OSError, sqlite3.Error, LocalError):
+                self.archive.capture_failed = True
+                logging.getLogger("tg_mcp").error("Archive capture failed; inspect archive status")
         async with self._update_condition:
             self._update_sequence += 1
             self._updates.append(

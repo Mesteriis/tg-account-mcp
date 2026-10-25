@@ -32,3 +32,18 @@
 3. If the user asked to send, call the matching user or bot send tool with an idempotency key.
 4. Return the delivery receipt. On timeout, retry only with the identical arguments and key.
 
+
+## Read or enable a local archive
+
+1. Check `get_capabilities`: archive tools require a server advertising `local_archive`.
+2. Resolve the account and chat. Use `get_archive_status` to inspect existing observed coverage.
+3. If the user explicitly requests archiving, use an admin token with `configure_chat_archive`.
+   Retain deleted text only when the user specifically authorizes that setting; default to false.
+4. Use `sync_chat_archive` for one bounded history page, or let the background worker continue.
+5. Retrieve with `search_archive`; follow cursors up to the requested bound. Cite the returned
+   account/chat/message IDs and message dates. Do not describe lexical search as semantic search.
+6. Inspect `get_message_versions` to distinguish observed edits from the current saved text.
+7. For export use `export_chat_archive` and continue until `next_cursor` is absent. File bytes
+   and historical versions are not part of this export.
+8. Disable capture to pause; use `purge_chat_archive` only when the user requests local deletion.
+   Never interpret deletion of a Telegram message as authorization to retain its contents.

@@ -4,6 +4,8 @@ import asyncio
 import base64
 import contextlib
 import io
+import logging
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -16,6 +18,7 @@ import qrcode.image.svg
 from telethon import functions
 from telethon.errors import PasswordHashInvalidError, SessionPasswordNeededError
 
+from tg_mcp.archive import ArchiveStore
 from tg_mcp.bot import BotGateway
 from tg_mcp.config import Credentials
 from tg_mcp.errors import GatewayError, LocalError
@@ -53,6 +56,8 @@ class IdentityManager:
         client_factory: ClientFactory | None = None,
     ):
         self.store = store
+        self.archive = ArchiveStore(store)
+        self._archive_task: asyncio.Task | None = None
         self.credentials = credentials
         self.http = http
         self.catalog = IdentityCatalog.load(store, credentials)
@@ -77,8 +82,40 @@ class IdentityManager:
             runtime = self._new_runtime(account)
             self._accounts[account.account_id] = runtime
             await self._connect_existing(account, runtime)
+        self._archive_task = asyncio.create_task(self._archive_loop())
+
+    async def _archive_loop(self) -> None:
+        while True:
+            try:
+                delay = await self._sync_archives()
+            except (OSError, sqlite3.Error, LocalError):
+                self.archive.capture_failed = True
+                logging.getLogger("tg_mcp").error("Archive synchronization storage failed")
+                delay = 60
+            await asyncio.sleep(delay)
+
+    async def _sync_archives(self) -> int:
+        delay = 60
+        for chat in self.archive.configured():
+            try:
+                gateway = await self.user_gateway(chat["account"])
+                async with asyncio.timeout(30):
+                    await gateway.sync_archive_chat(chat["chat"])
+            except GatewayError as exc:
+                self.archive.sync_error(chat["account"], chat["chat"], exc.code)
+                if exc.retry_after:
+                    delay = max(delay, exc.retry_after)
+                    break
+            except TimeoutError:
+                self.archive.sync_error(chat["account"], chat["chat"], "unavailable")
+        return delay
 
     async def close(self) -> None:
+        if self._archive_task:
+            self._archive_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._archive_task
+            self._archive_task = None
         tasks = [runtime.login_task for runtime in self._accounts.values() if runtime.login_task]
         for task in tasks:
             task.cancel()
@@ -248,6 +285,7 @@ class IdentityManager:
             runtime.client,
             self.credentials.mcp_token.get_secret_value(),
             account.account_id,
+            archive=self.archive,
         )
         runtime.status = "ready" if account.setup_complete else "waiting_name"
         runtime.error = None
@@ -347,9 +385,10 @@ class IdentityManager:
                 with contextlib.suppress(Exception):
                     await runtime.client.disconnect()
             try:
+                self.archive.purge(account_id)
                 self.catalog.remove_account(account_id)
                 self.store.delete_account_session(account_id)
-            except (LocalError, OSError) as exc:
+            except (LocalError, OSError, sqlite3.Error) as exc:
                 raise GatewayError("unavailable", "Unable to delete account identity.") from exc
             return {"account_id": account.account_id, "deleted": True}
 

@@ -37,6 +37,20 @@ avoid precision loss in clients. Read tools use cursor-based pagination where ap
 | `list_topics` | List forum topics in a supergroup. |
 | `get_recent_mentions` | List recent mentions globally or within a chat. |
 
+## Local archives
+
+| Tool | Purpose |
+| --- | --- |
+| `configure_chat_archive` | Opt in or pause capture for one chat; configure deleted-content retention (`admin`). |
+| `sync_chat_archive` | Import one resumable history page; optionally restart the scan (`admin`). |
+| `get_archive_status` | Report observed coverage, counts, progress and errors for one chat. |
+| `search_archive` | Search literal words with sender/date filters inside one local archive. |
+| `get_message_versions` | Read locally observed versions of one message. |
+| `export_chat_archive` | Export bounded JSON pages of current snapshots and attachment metadata. |
+| `purge_chat_archive` | Disable and remove a local archive, versions and search entries (`admin`). |
+
+See [local archives](archive.md) for retention, coverage gaps, access rules and synchronization.
+
 ## Attachments
 
 | Tool | Purpose |

@@ -231,11 +231,18 @@ Back up the state volume only while the service is stopped and store the backup 
 session is exposed, revoke it from **Telegram → Devices**. See [SECURITY.md](SECURITY.md) for
 reporting vulnerabilities and the Russian README for operational details and error codes.
 
+## Local chat archives
+
+Opt in selected chats to persistent local history, observed edit versions and full-text search.
+Deleted-content retention is off by default. See [archive setup and limitations](docs/archive.md)
+and the [tool catalog](docs/tools.md#local-archives). Semantic search is not included.
+
 ## Known limitations
 
 - Secret chats are not available through Telegram's cloud API.
 - Message deletion and distributed/multi-replica deployment are not supported.
-- History is read from Telegram on demand rather than copied into a local database.
+- History tools read Telegram on demand. Only explicitly selected chats are copied to the local
+  archive; observed coverage and deletion events are not guaranteed complete.
 - Positional pagination can repeat or skip items when new messages arrive between pages.
 - `poll_updates` keeps its most recent 2,000 events in process memory and resets after restart.
 

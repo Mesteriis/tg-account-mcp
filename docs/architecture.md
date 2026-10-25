@@ -23,6 +23,8 @@ flowchart LR
 - `manager.py` owns account/bot lifecycle and isolates failures to one identity.
 - `telegram.py` adapts Telethon operations to the server's stable data contracts.
 - `bot.py` contains the small Telegram Bot API boundary.
+- `archive.py` stores opt-in message snapshots, observed versions, tombstones and an FTS5 index
+  in private SQLite state. The manager runs resumable history scans; gateways capture live events.
 - `storage.py` validates permissions and performs atomic writes in the state directory.
 - `access.py` resolves the main token and scoped agent-token permissions.
 - `discovery.py` advertises an authenticated endpoint on the local network without broadcasting
@@ -37,6 +39,10 @@ flowchart LR
 are stored independently so one expired or revoked session does not prevent other identities from
 starting. Bot records, agent token hashes, drafts, idempotency receipts, and the bounded operations
 history are stored as private JSON files.
+
+Selected chat archives use `archive.sqlite3`, with transactions covering message versions,
+search entries and import cursors. Account deletion removes its archived content. See
+[archive operations and coverage](archive.md).
 
 The application requires a single writer. Files are atomically replaced, but the state model is
 not a distributed database and one state volume must not be mounted by multiple replicas.

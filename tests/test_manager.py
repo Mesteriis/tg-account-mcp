@@ -205,11 +205,20 @@ async def test_delete_account_disconnects_and_removes_session(manager):
     session = value.store.prepare_session(value.store.account_session_path(account["account_id"]))
     session.write_bytes(b"session")
 
+    value.archive.configure(
+        account["account_id"], "123", "Synthetic", enabled=True, retain_deleted=True
+    )
+    value.archive.ingest_page(
+        account["account_id"], "123", [{"id": "1", "text": "archive test"}], None
+    )
     result = await value.delete_account(account["account_id"])
 
     assert result == {"account_id": account["account_id"], "deleted": True}
     assert value.list_accounts() == []
     assert not session.exists()
+    with value.archive.connect() as db:
+        for table in ["chats", "messages", "versions", "message_fts"]:
+            assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
     clients[0].disconnect.assert_awaited()
     with pytest.raises(GatewayError, match="identity_not_found"):
         value.login_state(account["account_id"])
@@ -350,3 +359,20 @@ async def test_multiple_bots_are_selected_by_id(tmp_path):
         assert (await value.bot_gateway(first["bot_id"]))._token.startswith("111:")
         assert (await value.bot_gateway(second["bot_id"]))._token.startswith("222:")
         await value.close()
+
+
+async def test_archive_worker_resumes_configured_chats_and_respects_flood_wait(
+    manager, monkeypatch
+):
+    value, _ = manager
+    account = "acct_aaaaaaaaaaaaaaaa"
+    value.archive.configure(account, "123", "Synthetic", enabled=True, retain_deleted=False)
+    sync = AsyncMock(side_effect=GatewayError("rate_limited", "Wait", 120))
+    value.user_gateway = AsyncMock(return_value=SimpleNamespace(sync_archive_chat=sync))
+    sleep = AsyncMock(side_effect=asyncio.CancelledError)
+    monkeypatch.setattr("tg_mcp.manager.asyncio.sleep", sleep)
+    with pytest.raises(asyncio.CancelledError):
+        await value._archive_loop()
+    sync.assert_awaited_once_with("123")
+    sleep.assert_awaited_once_with(120)
+    assert value.archive.status(account, "123")["error"] == "rate_limited"

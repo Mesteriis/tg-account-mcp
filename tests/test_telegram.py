@@ -354,6 +354,7 @@ async def test_chat_info_and_message_links_are_normalized():
         "id": "123",
         "title": "Dima",
         "kind": "user",
+        "is_channel": False,
         "username": "dima_test",
         "verified": True,
         "bot": False,

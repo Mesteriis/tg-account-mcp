@@ -19,8 +19,9 @@ from telethon import functions
 from telethon.errors import PasswordHashInvalidError, SessionPasswordNeededError
 
 from tg_mcp.archive import ArchiveStore
+from tg_mcp.background import BackgroundRAG
 from tg_mcp.bot import BotGateway
-from tg_mcp.config import Credentials
+from tg_mcp.config import Credentials, Settings
 from tg_mcp.errors import GatewayError, LocalError
 from tg_mcp.identities import AccountRecord, BotRecord, IdentityCatalog
 from tg_mcp.storage import StateStore
@@ -54,10 +55,12 @@ class IdentityManager:
         http: httpx.AsyncClient,
         *,
         client_factory: ClientFactory | None = None,
+        settings: Settings | None = None,
     ):
         self.store = store
         self.archive = ArchiveStore(store)
         self._archive_task: asyncio.Task | None = None
+        self.rag = BackgroundRAG(self, settings) if settings and settings.background_rag else None
         self.credentials = credentials
         self.http = http
         self.catalog = IdentityCatalog.load(store, credentials)
@@ -83,6 +86,8 @@ class IdentityManager:
             self._accounts[account.account_id] = runtime
             await self._connect_existing(account, runtime)
         self._archive_task = asyncio.create_task(self._archive_loop())
+        if self.rag:
+            self.rag.start()
 
     async def _archive_loop(self) -> None:
         while True:
@@ -111,6 +116,8 @@ class IdentityManager:
         return delay
 
     async def close(self) -> None:
+        if self.rag:
+            await self.rag.close()
         if self._archive_task:
             self._archive_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -144,6 +151,31 @@ class IdentityManager:
         except Exception:
             runtime.status = "error"
             runtime.error = "unavailable"
+
+    async def retry_failed_accounts(self) -> None:
+        """Recover known enabled sessions after transient startup errors; never bypass login."""
+        async with self._mutation_lock:
+            for account in self.catalog.document.accounts:
+                previous = self._accounts.get(account.account_id)
+                if (
+                    not account.enabled
+                    or not account.setup_complete
+                    or not account.telegram_id
+                    or previous is None
+                    or previous.status != "error"
+                    or previous.error == "duplicate_account"
+                ):
+                    continue
+                with contextlib.suppress(Exception):
+                    await previous.client.disconnect()
+                runtime = self._new_runtime(account)
+                self._accounts[account.account_id] = runtime
+                try:
+                    async with asyncio.timeout(30):
+                        await self._connect_existing(account, runtime)
+                except TimeoutError:
+                    runtime.status = "error"
+                    runtime.error = "unavailable"
 
     async def add_account(self, label: str | None = None) -> dict:
         async with self._mutation_lock:
@@ -286,6 +318,13 @@ class IdentityManager:
             self.credentials.mcp_token.get_secret_value(),
             account.account_id,
             archive=self.archive,
+            auto_archive=lambda: (
+                self.rag is not None
+                and self._started
+                and account.enabled
+                and self._accounts.get(account.account_id) is runtime
+                and runtime.status == "ready"
+            ),
         )
         runtime.status = "ready" if account.setup_complete else "waiting_name"
         runtime.error = None

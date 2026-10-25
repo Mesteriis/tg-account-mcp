@@ -218,6 +218,7 @@ async def test_real_sdk_lists_tools_and_routes_explicit_ids(endpoint, mode):
             "semantic_search_archive",
             "index_project_memory",
             "search_project_memory",
+            "get_background_rag_status",
             "get_status",
             "list_accounts",
             "list_bots",
@@ -686,3 +687,23 @@ async def test_semantic_disabled_is_explicit_and_offline_keyword_memory_still_wo
         capabilities = (await client.call_tool("get_capabilities")).structured_content
         assert capabilities["features"]["semantic_search"] is False
         assert capabilities["features"]["project_memory"] is True
+
+
+async def test_background_status_is_admin_only(endpoint):
+    url, _ = endpoint
+    async with connected(url) as client:
+        result = await client.call_tool("get_background_rag_status")
+        assert result.structured_content == {"enabled": False, "running": False}
+        token = (
+            await client.call_tool(
+                "create_agent_token",
+                {
+                    "label": "Reader",
+                    "scopes": ["read"],
+                    "identity_ids": [ACCOUNT_A],
+                    "chat_ids": ["123"],
+                },
+            )
+        ).structured_content["token"]
+    async with connected(url, token=token) as client:
+        assert (await client.call_tool("get_background_rag_status")).is_error

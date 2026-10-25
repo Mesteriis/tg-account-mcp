@@ -240,6 +240,8 @@ and the [tool catalog](docs/tools.md#local-archives).
 [Project memory and semantic search](docs/project-memory.md) add source-backed drafts, explicit
 approval and opt-in local Ollama embeddings. Projects stay isolated; source edits and deletions
 invalidate derived memory. Keyword search works without an embedding model.
+[Optional background RAG](docs/background-rag.md) automatically discovers all current/future
+user-account chats, groups and channels and maintains local embeddings.
 
 ## Known limitations
 

@@ -78,7 +78,7 @@ async def set_bot(store: StateStore, credentials: Credentials, token: str) -> No
 def serve(store: StateStore, credentials: Credentials) -> None:
     settings = Settings.from_env(store.root)
     http = http_client()
-    manager = IdentityManager(store, credentials, http)
+    manager = IdentityManager(store, credentials, http, settings=settings)
 
     @asynccontextmanager
     async def lifecycle():

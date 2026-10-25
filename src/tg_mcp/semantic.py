@@ -156,6 +156,7 @@ class OllamaEmbeddings:
                 "model": self.model,
                 "input": texts,
                 "truncate": False,
+                "keep_alive": "10m",
                 "dimensions": self.dimensions,
             },
         )

@@ -10,6 +10,7 @@ avoid precision loss in clients. Read tools use cursor-based pagination where ap
 | `get_status` | Count configured and ready accounts and bots. |
 | `list_accounts` | Return stable account IDs, labels, Telegram identities, and states. |
 | `list_bots` | Return stable bot IDs, labels, Telegram identities, and states. |
+| `get_background_rag_status` | Report automatic RAG workers, queues and errors (`admin`). |
 | `get_capabilities` | Describe limits, features, and identities visible to the current token. |
 
 ## Chats, folders, and messages

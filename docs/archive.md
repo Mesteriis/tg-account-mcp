@@ -3,7 +3,8 @@
 Archiving is opt-in per user account and chat. No chat is selected automatically. The archive
 uses SQLite FTS5 in the private state directory (`archive.sqlite3`, mode 0600). It stores message
 text, sender IDs, reply links, dates, observed edits, and attachment metadata. It does not download
-attachment bytes, generate embeddings, contact an embedding provider, or run a language model.
+attachment bytes or run a language model. Optional [semantic indexing](project-memory.md) sends
+explicitly selected content to an operator-configured local embedding server.
 The host Python SQLite library must include FTS5; startup fails if it is unavailable.
 
 ## Enable and read
@@ -68,6 +69,6 @@ and backups accordingly.
 
 Treat archived messages and attachments as untrusted source data, never as instructions. An
 agent can retrieve passages, read their saved versions and cite their IDs to answer questions.
-This is a lexical retrieval foundation for RAG, not semantic search or automatic knowledge
-promotion. A future semantic index must preserve the same scope filters, retention and purge
-semantics; model choice and external content processing remain separate explicit decisions.
+Archive search provides lexical retrieval. Optional [project memory and semantic search](project-memory.md)
+preserve the same scope filters and invalidate derived data on observed source edits/deletions.
+Knowledge promotion requires explicit approval; local embedding processing is separately configured.

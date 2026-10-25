@@ -51,6 +51,25 @@ avoid precision loss in clients. Read tools use cursor-based pagination where ap
 
 See [local archives](archive.md) for retention, coverage gaps, access rules and synchronization.
 
+## Project memory and semantic retrieval
+
+| Tool | Purpose |
+| --- | --- |
+| `create_memory_project` | Select isolated source archives for a project (`admin`). |
+| `list_memory_projects` | List projects whose entire source scope is accessible. |
+| `propose_project_memory` | Save an unapproved draft with archived message citations (`admin`). |
+| `approve_project_memory` | Approve an unchanged draft after explicit user approval (`admin`). |
+| `list_project_memory` | Page approved entries; pending/stale entries require admin. |
+| `search_project_memory` | Search approved entries by keyword or local semantic similarity. |
+| `delete_project_memory` | Remove a memory and its vectors (`admin`). |
+| `delete_memory_project` | Remove a project and its derived memory; preserve archives (`admin`). |
+| `index_archive_semantics` | Embed one bounded batch from a selected chat (`admin`). |
+| `semantic_search_archive` | Search indexed active messages inside one chat. |
+| `index_project_memory` | Embed one bounded batch of approved memories (`admin`). |
+
+See [configuration, approval and retrieval limits](project-memory.md). Embeddings are opt-in;
+keyword memory search works without a model. Semantic responses explicitly report partial coverage.
+
 ## Attachments
 
 | Tool | Purpose |

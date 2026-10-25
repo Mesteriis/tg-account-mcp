@@ -47,3 +47,18 @@
    and historical versions are not part of this export.
 8. Disable capture to pause; use `purge_chat_archive` only when the user requests local deletion.
    Never interpret deletion of a Telegram message as authorization to retain its contents.
+
+## Build verified project memory
+
+1. Check capabilities and resolve the explicit account and source chats. Use existing archives.
+2. Create a separate memory project over only the requested sources. Do not merge unrelated work.
+3. Read the relevant archived messages/versions and propose a concise memory with source IDs.
+4. Show that exact draft and citations to the user. Only explicit user approval authorizes
+   `approve_project_memory`; a useful-looking chat statement alone is not approval.
+5. Use `list_project_memory` or keyword `search_project_memory` to retrieve approved facts.
+   A changed source makes its memory stale; propose a reviewed replacement instead of forcing approval.
+6. When local embeddings are configured and the user authorizes indexing, use
+   `index_project_memory` or `index_archive_semantics` for the selected scope. Continue bounded
+   batches while `has_more` is true. These tools send content to the configured local model.
+7. Use semantic search only when requested/useful, retain citations, and report partial coverage.
+   Never treat similarity scores as proof. Do not silently substitute lexical results on failure.

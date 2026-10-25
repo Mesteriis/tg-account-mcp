@@ -19,6 +19,17 @@ _IDENTITY = re.compile(r"^(?:acct|bot)_[a-z2-7]{16}$")
 _AGENT = re.compile(r"^agent_[a-z2-7]{16}$")
 _CHAT = re.compile(r"^-?[1-9][0-9]{0,18}$")
 _OPERATIONS = {
+    "create_memory_project",
+    "list_memory_projects",
+    "propose_project_memory",
+    "approve_project_memory",
+    "list_project_memory",
+    "delete_project_memory",
+    "delete_memory_project",
+    "index_archive_semantics",
+    "semantic_search_archive",
+    "index_project_memory",
+    "search_project_memory",
     "configure_chat_archive",
     "sync_chat_archive",
     "get_archive_status",
@@ -72,6 +83,17 @@ _OPERATIONS = {
     "revoke_agent_token",
 }
 _CATEGORIES = {
+    "create_memory_project": "send",
+    "list_memory_projects": "read",
+    "propose_project_memory": "send",
+    "approve_project_memory": "send",
+    "list_project_memory": "read",
+    "delete_project_memory": "send",
+    "delete_memory_project": "send",
+    "index_archive_semantics": "read",
+    "semantic_search_archive": "search",
+    "index_project_memory": "read",
+    "search_project_memory": "search",
     "configure_chat_archive": "send",
     "sync_chat_archive": "read",
     "get_archive_status": "read",

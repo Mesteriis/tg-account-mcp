@@ -5,6 +5,8 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+- Show server-sampled indexing/inflow rates, queue history and a net-drain ETA on the RAG page,
+  with explicit warmup, paused, growing, stale and unavailable-account states.
 - Speed up local RAG queue selection, allow fractional indexing pauses, and embed posts up to
   8192 characters without truncation; keep Telegram adaptive pacing independent.
 - Retry each account independently of other accounts’ long-running history passes.

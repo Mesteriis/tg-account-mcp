@@ -120,6 +120,23 @@
             <progress id="ragProgress" max="100" value="0" aria-label="Индекс сохранённых текстов"></progress>
             <p id="ragModel" class="rag-muted"></p>
             <p id="ragTimes" class="rag-muted"></p>
+            <div class="rag-throughput">
+              <h2>Скорость и динамика очереди</h2>
+              <dl class="rag-rate-list">
+                <div><dt>Фоновая индексация</dt><dd id="ragIndexRate">—</dd></div>
+                <div><dt>Приток текстов, нетто</dt><dd id="ragIncomingRate">—</dd></div>
+                <div><dt>Изменение очереди</dt><dd id="ragQueueRate">—</dd></div>
+              </dl>
+              <p id="ragRateWindow" class="rag-muted">Собираем замеры…</p>
+              <p class="rag-eta"><strong>Оценка обработки очереди</strong><span id="ragEta">Собираем замеры…</span></p>
+              <p id="ragEtaNote" class="rag-muted"></p>
+              <figure id="ragQueueFigure" hidden>
+                <figcaption>История очереди · до 5 минут</figcaption>
+                <p id="ragQueueRange" class="rag-muted"></p>
+                <svg id="ragQueueChart" class="rag-queue-chart" viewBox="0 0 600 80" preserveAspectRatio="none" role="img" aria-label="Изменение количества текстов в очереди"><polyline id="ragQueueLine" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline></svg>
+                <div class="rag-chart-axis"><span id="ragQueueStart"></span><span id="ragQueueEnd"></span></div>
+              </figure>
+            </div>
           </article>
           <article class="panel rag-panel">
             <div class="panel-head"><div><h2>Темп загрузки по аккаунтам</h2><p>После лимита интервал удваивается. После двух часов стабильной работы уменьшается на 20%.</p></div></div>

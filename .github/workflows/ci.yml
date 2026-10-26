@@ -17,6 +17,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
+      - run: node --test tests/ui-table-state.test.cjs
       - run: uv build
       - run: TG_MCP_DOMAIN=mcp.example.test docker compose config --quiet
       - run: docker build -t tg-mcp:ci .

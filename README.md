@@ -259,6 +259,7 @@ uv sync --frozen
 uv run ruff check .
 uv run ruff format --check .
 uv run pytest -q
+node --test tests/ui-table-state.test.cjs
 uv build
 TG_MCP_DOMAIN=mcp.example.test docker compose config --quiet
 docker build -t tg-account-mcp:local .
@@ -329,3 +330,18 @@ object deletion; `media_cleanup_pending` reports this asynchronous cleanup queue
 Telegram deletion retention follows the chat's existing `retain_deleted` setting.
 Back up the SQLite archive, spool, credentials and S3 service data together; an
 S3 service on the same machine is storage, not an independent backup.
+
+### Dashboard tables and rules
+
+The RAG page combines queue monitoring with a searchable chat registry. Filter by
+account, chat type, state, inherited/custom rule or S3 policy; sort the result and
+choose 10/25/50/100 rows per page. Excluded chats remain visible. Open a chat name
+to edit its rule inline; drafts and the selected page survive status polling.
+Private-chat rules are fixed. Default group/channel rules live under Settings →
+RAG and S3; server/model information is read-only under About the service.
+
+The activity table supports filters, sorting and pagination within the most recent
+100 retained operations from the last 30 days. Its footer names that bounded scope.
+History coverage uses known states rather than an estimated total-Telegram percentage.
+Per-chat S3 counts show unique uploaded objects and pending/error jobs, without file
+names or object keys.

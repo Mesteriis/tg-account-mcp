@@ -34,6 +34,8 @@
         <button class="icon-button mobile-menu" id="mobileMenu" aria-label="Открыть меню" aria-expanded="false"><i class="ph ph-list" aria-hidden="true"></i></button>
         <div class="page-heading"><h1 id="pageTitle">Обзор</h1><p id="pageSubtitle">Состояние сервиса, статистика и последние операции</p></div>
         <div class="top-actions">
+        <p id="ragState" class="rag-state" role="status">Загрузка состояния RAG…</p>
+
           <div class="service-state"><span class="live-dot"></span><span><strong>Сервис работает</strong><small id="syncLabel">Обновляем данные…</small></span></div>
           <button class="button primary" id="headerConnect"><i class="ph ph-plus" aria-hidden="true"></i>Подключить аккаунт</button>
         </div>
@@ -84,9 +86,11 @@
             <label class="search"><i class="ph ph-magnifying-glass" aria-hidden="true"></i><input id="historySearch" type="search" placeholder="Поиск по аккаунту, действию или чату"></label>
             <select id="identityFilter" aria-label="Фильтр по аккаунту"><option value="">Все аккаунты</option></select>
             <select id="actionFilter" aria-label="Фильтр по действию"><option value="">Все действия</option><option value="read">Чтение</option><option value="search">Поиск</option><option value="send">Отправка</option></select>
+            <select id="historySort" aria-label="Сортировка операций"><option value="recent">Сначала новые</option><option value="oldest">Сначала старые</option><option value="slow">Сначала долгие</option></select>
             <select id="statusFilter" aria-label="Фильтр по статусу"><option value="">Все статусы</option><option value="success">Успешно</option><option value="error">Ошибка</option></select>
           </div>
           <div class="table-wrap" id="historyTableWrap"><table><thead><tr><th>Время</th><th>Аккаунт</th><th>Действие</th><th>Чат</th><th>Статус</th><th>Длительность</th></tr></thead><tbody id="historyRows"></tbody></table><div class="empty-state" id="historyEmpty" hidden><i class="ph ph-clock-counter-clockwise" aria-hidden="true"></i><strong>История пока пуста</strong><span>Операции агентов появятся здесь автоматически.</span></div></div>
+          <div id="historyPager" class="table-pager"></div>
           <div class="table-wrap" id="usageTableWrap" hidden><table><thead><tr><th>Аккаунт</th><th>Всего</th><th>Чтение</th><th>Поиск</th><th>Отправка</th><th>Ошибки</th></tr></thead><tbody id="usageRows"></tbody></table><div class="empty-state" id="usageEmpty" hidden><i class="ph ph-chart-donut" aria-hidden="true"></i><strong>Нет данных по аккаунтам</strong><span>Совершите операцию через MCP с выбранным identity.</span></div></div>
         </article>
       </section>
@@ -104,64 +108,29 @@
       </section>
 
       <section class="view" data-page="activity">
-        <div class="section-head"><div><h2>Активность</h2><p>Полная история вызовов MCP без содержимого сообщений и поисковых запросов.</p></div></div>
+        <div class="section-head"><div><h2>Активность</h2><p>Последние сохранённые вызовы MCP без содержимого сообщений и поисковых запросов.</p></div></div>
         <article class="panel activity-panel standalone" id="activityStandalone"></article>
       </section>
 
       <section class="view" data-page="rag" aria-label="Фоновая индексация RAG">
-        <p id="ragState" class="rag-state" role="status">Загрузка состояния RAG…</p>
-        <article class="panel rag-progress ingestion-panel" aria-labelledby="ingestionHeading">
-          <h2 id="ingestionHeading">Правила RAG и S3</h2>
-          <p>Личные чаты: тексты всегда попадают в RAG, все типы вложений — в S3. Отключённые аккаунты и остановленные архивы не загружаются.</p>
-          <p id="mediaState" class="rag-muted" role="status">Загрузка состояния хранилища…</p>
-          <form id="ingestionForm">
-            <label class="ingestion-scope">Общее правило или чат<select id="ingestionScope" required aria-label="Общее правило или чат"></select></label>
-            <p id="ingestionOrigin" class="rag-muted"></p>
-            <fieldset id="ingestionControls"><legend>Что загружать</legend>
-              <div class="ingestion-options"><label><input id="ingestionRag" type="checkbox"> Тексты в RAG</label><label><input id="ingestionS3" type="checkbox"> Вложения в S3</label></div>
-              <p class="rag-muted">Типы вложений для S3. Распознавание изображений и расшифровка аудио не выполняются.</p>
-              <div id="ingestionTypes" class="ingestion-options"></div>
-            </fieldset>
-            <div class="ingestion-actions"><button id="ingestionSave" type="submit" class="button primary">Сохранить правило</button><button id="ingestionInherit" type="button" class="button">Использовать общее</button></div>
-            <p id="ingestionResult" class="rag-muted" role="status"></p>
-          </form>
-        </article>
-        <div id="ragDetails" hidden>
-          <article class="panel rag-progress">
-            <h2>Загрузка истории Telegram</h2>
-            <p id="ragHistory"></p>
-            <p class="rag-muted">Общий объём сообщений станет известен после загрузки истории всех чатов. Новые сообщения продолжают поступать в фоне.</p>
-            <h2>Семантический индекс</h2>
-            <p id="ragIndex"></p>
-            <progress id="ragProgress" max="100" value="0" aria-label="Индекс сохранённых текстов"></progress>
-            <p id="ragModel" class="rag-muted"></p>
-            <p id="ragTimes" class="rag-muted"></p>
-            <div class="rag-throughput">
-              <h2>Скорость и динамика очереди</h2>
-              <dl class="rag-rate-list">
-                <div><dt>Фоновая индексация</dt><dd id="ragIndexRate">—</dd></div>
-                <div><dt>Приток текстов, нетто</dt><dd id="ragIncomingRate">—</dd></div>
-                <div><dt>Изменение очереди</dt><dd id="ragQueueRate">—</dd></div>
-              </dl>
-              <p id="ragRateWindow" class="rag-muted">Собираем замеры…</p>
-              <p class="rag-eta"><strong>Оценка обработки очереди</strong><span id="ragEta">Собираем замеры…</span></p>
-              <p id="ragEtaNote" class="rag-muted"></p>
-              <figure id="ragQueueFigure" hidden>
-                <figcaption>История очереди · до 5 минут</figcaption>
-                <p id="ragQueueRange" class="rag-muted"></p>
-                <svg id="ragQueueChart" class="rag-queue-chart" viewBox="0 0 600 80" preserveAspectRatio="none" role="img" aria-label="Изменение количества текстов в очереди"><polyline id="ragQueueLine" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"></polyline></svg>
-                <div class="rag-chart-axis"><span id="ragQueueStart"></span><span id="ragQueueEnd"></span></div>
-              </figure>
-            </div>
-          </article>
-          <article class="panel rag-panel">
-            <div class="panel-head"><div><h2>Темп загрузки по аккаунтам</h2><p>После лимита интервал удваивается. После двух часов стабильной работы уменьшается на 20%.</p></div></div>
-            <div class="table-wrap"><table><thead><tr><th>Аккаунт</th><th>Интервал</th><th>Пауза Telegram до</th><th>Последний лимит</th><th>Лимитов</th></tr></thead><tbody id="ragAccounts"></tbody></table></div>
-          </article>
-          <article class="panel rag-panel">
-            <div class="panel-head"><div><h2>Чаты, группы и каналы</h2><p id="ragChatSummary"></p></div><label class="rag-filter"><span>Показать</span><select id="ragFilter"><option value="all">Все чаты</option><option value="errors">С ограничениями и ошибками</option><option value="pending">История ещё загружается</option></select></label></div>
-            <div class="table-wrap"><table><thead><tr><th>Чат / аккаунт</th><th>История</th><th>Тексты / индекс</th><th>Последняя загрузка</th><th>Состояние</th></tr></thead><tbody id="ragChats"></tbody></table></div>
-          </article>
+        <section class="rag-monitor" aria-label="Состояние индексации">
+          <figure id="ragQueueFigure" class="queue-figure"><figcaption>Очередь сохранённых текстов</figcaption><p id="ragQueueRange" class="rag-muted"></p><canvas id="ragQueueChart" aria-label="Изменение очереди текстов" role="img"></canvas><div class="rag-chart-axis"><span id="ragQueueStart"></span><span id="ragQueueEnd"></span></div></figure>
+          <div class="monitor-summary"><dl class="monitor-rates"><div><dd id="ragIndexRate">—</dd><dt>Индексация, текстов/с</dt></div><div><dd id="ragIncomingRate">—</dd><dt>Приток, нетто · текстов/с</dt></div><div><dd id="ragPending">—</dd><dt>Текстов в очереди</dt></div><div><dd id="ragEta">—</dd><dt>Ожидаемое время</dt></div></dl><p id="ragRateWindow" class="rag-muted"></p><button id="ragAlert" class="rag-alert" type="button" aria-expanded="false" aria-controls="ragDiagnostics"><i class="ph ph-warning-circle" aria-hidden="true"></i><span id="ragAlertText">Состояние вложений загружается</span><span>Подробнее</span></button></div>
+        </section>
+        <div id="ragDiagnostics" class="rag-diagnostics" hidden>
+          <p id="mediaState" role="status"></p><p id="ragHistory"></p><p id="ragIndex"></p><p id="ragModel"></p><p id="ragTimes"></p><p id="ragEtaNote"></p><p id="ragQueueRate"></p>
+          <h2>Темп загрузки по аккаунтам</h2><p>После лимита интервал удваивается. После двух часов активной стабильной работы уменьшается на 20%.</p>
+          <div class="table-wrap"><table><thead><tr><th>Аккаунт</th><th>Интервал</th><th>Пауза Telegram до</th><th>Последний лимит</th><th>Лимитов</th></tr></thead><tbody id="ragAccounts"></tbody></table></div>
+        </div>
+        <div class="rag-workspace">
+          <aside class="rag-facets" aria-label="Фильтры чатов"><div id="ragAccountFacets"></div><fieldset><legend>Тип чата</legend><div id="ragKindFacets"></div></fieldset><fieldset><legend>Состояние</legend><div id="ragStateFacets"></div></fieldset></aside>
+          <section class="rag-list" aria-labelledby="ragChatHeading">
+            <div class="rag-list-toolbar"><h2 id="ragChatHeading">Чаты</h2><label class="search"><i class="ph ph-magnifying-glass" aria-hidden="true"></i><input id="ragSearch" type="search" placeholder="Поиск по названию или ID" aria-label="Поиск чатов"></label><select id="ragSort" aria-label="Сортировка чатов"><option value="state">По состоянию</option><option value="title">По названию</option><option value="recent">По последней загрузке</option><option value="pending">По очереди текстов</option></select><button id="ragMoreFilters" type="button" class="button" aria-expanded="false" aria-controls="ragExtraFilters"><i class="ph ph-list" aria-hidden="true"></i>Ещё фильтры</button></div>
+            <div id="ragExtraFilters" class="extra-filters" hidden><label>Правило<select id="ragRuleFilter"><option value="">Все правила</option><option value="own">Своё правило</option><option value="inherited">Общее правило</option><option value="fixed">Фиксированное</option></select></label><label>Вложения S3<select id="ragS3Filter"><option value="">Все</option><option value="on">Включены</option><option value="off">Выключены</option></select></label></div>
+            <div class="rag-result-line"><p id="ragChatSummary" role="status"></p><button id="ragReset" class="text-button" type="button">Сбросить фильтры</button></div>
+            <div class="table-wrap rag-table-wrap"><table class="rag-chat-table"><thead><tr><th><button type="button" data-rag-sort="title">Чат</button></th><th>Аккаунт</th><th>Тип</th><th>История Telegram</th><th><button type="button" data-rag-sort="pending">Тексты в индексе</button></th><th>S3 файлы</th><th><button type="button" data-rag-sort="state">Состояние</button></th><th><span class="sr-only">Правило чата</span></th></tr></thead><tbody id="ragChats"></tbody></table></div>
+            <div id="ragPager" class="table-pager"></div>
+          </section>
         </div>
       </section>
 
@@ -174,12 +143,28 @@
       </section>
 
       <section class="view" data-page="settings">
-        <div class="section-head"><div><h2>Настройки</h2><p>Информация о работе локального экземпляра.</p></div></div>
-        <div class="settings-grid"><article class="panel setting-card"><span class="large-icon"><i class="ph ph-database" aria-hidden="true"></i></span><div><h3>Хранение данных</h3><p>Сессии и история операций хранятся в приватном каталоге сервера с правами 0700/0600.</p></div></article><article class="panel setting-card"><span class="large-icon"><i class="ph ph-eye-slash" aria-hidden="true"></i></span><div><h3>Приватность аналитики</h3><p>Записываются только тип операции, identity, chat ID, статус и длительность. Тексты сообщений и запросы не сохраняются.</p></div></article></div>
+        <div class="settings-tabs" role="tablist" aria-label="Разделы настроек"><button id="settingsRulesTab" type="button" role="tab" aria-selected="true" aria-controls="settingsRules">RAG и S3</button><button id="settingsInfoTab" type="button" role="tab" aria-selected="false" aria-controls="settingsInfo">О сервисе</button></div>
+        <section id="settingsRules" role="tabpanel" aria-labelledby="settingsRulesTab" class="settings-surface"><h2>Правила хранения по умолчанию</h2><p class="rag-muted">Применяются к новым чатам и чатам без собственного правила. Индивидуальные настройки доступны в строках таблицы RAG.</p>
+          <form id="ingestionForm">
+            <label class="ingestion-scope">Тип чата<select id="ingestionScope" required aria-label="Тип чата для общего правила"></select></label>
+            <p id="ingestionOrigin" class="rag-muted"></p>
+            <fieldset id="ingestionControls"><legend>Что загружать</legend>
+              <div class="ingestion-options"><label><input id="ingestionRag" type="checkbox"> Тексты в RAG</label><label><input id="ingestionS3" type="checkbox"> Вложения в S3</label></div>
+              <p class="rag-muted">Типы вложений для S3. Распознавание изображений и расшифровка аудио не выполняются.</p>
+              <div id="ingestionTypes" class="ingestion-options"></div>
+            </fieldset>
+            <div class="ingestion-actions"><button id="ingestionSave" type="submit" class="button primary">Сохранить правило</button><button id="ingestionCancel" type="button" class="button">Отменить изменения</button><button id="ingestionInherit" type="button" class="button">Использовать общее</button></div>
+            <p id="ingestionResult" class="rag-muted" role="status"></p>
+          </form>
+          <p class="settings-footnote">Отключение правила сохраняет существующие данные. Остановленные архивы и отключённые аккаунты не загружаются.</p>
+          <button type="button" class="button" data-view-link="rag">Перейти к чатам</button>
+        </section>
+        <section id="settingsInfo" role="tabpanel" aria-labelledby="settingsInfoTab" class="settings-surface" hidden><h2>Локальный экземпляр</h2><dl class="settings-info-list"><div><dt>Модель индексации</dt><dd id="settingsModel">—</dd></div><div><dt>Хранилище S3</dt><dd id="settingsS3">—</dd></div><div><dt>Обновление панели</dt><dd>Каждые 4 секунды</dd></div><div><dt>Хранение сессий</dt><dd>Приватный каталог сервера, права 0700/0600</dd></div><div><dt>Аналитика операций</dt><dd>Тип, аккаунт, статус и длительность. Без текстов сообщений и поисковых запросов.</dd></div></dl><p class="rag-muted">Модель и подключение к хранилищу задаются в конфигурации сервера. Эта страница показывает их состояние.</p><button type="button" class="button" data-view-link="access">Параметры доступа MCP</button></section>
       </section>
     </main>
   </div>
   <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
+  <script src="/assets/table-state.js?v=__TG_MCP_VERSION__" defer></script>
   <script src="/assets/app.js?v=__TG_MCP_VERSION__" defer></script>
 </body>
 </html>

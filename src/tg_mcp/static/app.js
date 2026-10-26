@@ -39,7 +39,7 @@ const viewCopy = {
   activity: ['Активность', 'История операций и использование по аккаунтам'],
   rag: ['RAG', 'Фоновая загрузка истории и локальный семантический поиск'],
   access: ['Доступ MCP', 'Параметры подключения агентов'],
-  settings: ['Настройки', 'Хранение данных и приватность аналитики'],
+  settings: ['Настройки', 'Правила хранения и параметры экземпляра'],
 };
 const operationCopy = {
   get_status: ['Статус сервиса', 'read', 'ph-heartbeat'],
@@ -120,7 +120,9 @@ function navigate(view) {
   overview.classList.toggle('activity-only', view === 'activity');
   $('pageTitle').textContent = viewCopy[view][0];
   $('pageSubtitle').textContent = viewCopy[view][1];
-  history.replaceState(null, '', view === 'rag' ? '#rag' : location.pathname);
+  history.replaceState(null, '', view === 'overview' ? location.pathname : `#${view}`);
+  $('headerConnect').hidden = view !== 'accounts' || Boolean(data?.accounts?.some(a=>['connecting','waiting_qr','waiting_2fa','waiting_name'].includes(a.status)));
+  requestAnimationFrame(drawRagQueue);
   closeSidebar();
   window.scrollTo({top: 0, behavior: 'smooth'});
   if (view === 'activity') setTimeout(() => q('.activity-panel', overview)?.scrollIntoView({block: 'start'}), 50);
@@ -368,10 +370,12 @@ function filteredHistory() {
   });
 }
 
+let historyPage=1, historySize=10;
 function renderHistory() {
-  const rows = filteredHistory();
+  const rows = filteredHistory().sort((a,b)=>$('historySort').value==='oldest'?Date.parse(a.at)-Date.parse(b.at):$('historySort').value==='slow'?b.duration_ms-a.duration_ms:Date.parse(b.at)-Date.parse(a.at));
+  const page=TgTables.paginate(rows,historyPage,historySize);historyPage=page.page;
   const target = $('historyRows'); target.replaceChildren();
-  rows.forEach((event) => {
+  page.items.forEach((event) => {
     const copy = operationCopy[event.operation] || [event.operation, event.category, 'ph-circle'];
     const tr = document.createElement('tr');
     const values = [formatDateTime(event.at), identityName(event.identity_id), copy[0], event.chat_id || '—'];
@@ -380,6 +384,7 @@ function renderHistory() {
     const duration = document.createElement('td'); duration.textContent = event.duration_ms >= 1000 ? `${(event.duration_ms / 1000).toLocaleString('ru-RU', {maximumFractionDigits: 1})} с` : `${event.duration_ms} мс`; tr.append(duration); target.append(tr);
   });
   $('historyEmpty').hidden = rows.length !== 0;
+  makePager('historyPager',page,(p,size)=>{historyPage=p;historySize=size;renderHistory();},false,` · последние ${data?.analytics?.recent?.length || 0} операций за 30 дней`);
 }
 
 function renderUsage() {
@@ -394,10 +399,12 @@ function renderUsage() {
 }
 
 function renderFilters() {
-  const select = $('identityFilter'); const selected = select.value;
-  select.replaceChildren(new Option('Все аккаунты', ''));
-  [...data.accounts, ...data.bots].forEach((row) => select.append(new Option(row.label || row.username || row.account_id || row.bot_id, row.account_id || row.bot_id)));
-  select.value = selected;
+  const select=$('identityFilter'),selected=select.value,rows=[...data.accounts,...data.bots];
+  const key=JSON.stringify(rows.map(r=>[r.account_id||r.bot_id,r.label,r.username]));
+  if(select.dataset.optionsKey===key)return;
+  select.replaceChildren(new Option('Все аккаунты',''));
+  rows.forEach(row=>select.append(new Option(row.label||row.username||row.account_id||row.bot_id,row.account_id||row.bot_id)));
+  select.value=rows.some(r=>(r.account_id||r.bot_id)===selected)?selected:'';select.dataset.optionsKey=key;
 }
 
 function iconButton(label, icon, handler, extra = '') {
@@ -470,7 +477,7 @@ function renderManagement() {
     $('wizard').replaceChildren(...(pending ? [wizard(pending)] : []));
     renderedWizardKey = nextWizardKey;
   }
-  $('startAccount').hidden = Boolean(pending); $('headerConnect').hidden = Boolean(pending);
+  $('startAccount').hidden = Boolean(pending); $('headerConnect').hidden = Boolean(pending) || !$('sidebar').querySelector('[data-view="accounts"].active');
   const accounts = data.accounts.filter((row) => row !== pending); $('accounts').replaceChildren(...accounts.map((row) => entityCard(row, 'account')));
   $('bots').replaceChildren(...data.bots.map((row) => entityCard(row, 'bot')));
 }
@@ -482,176 +489,222 @@ async function startAccount() {
   try { await api('/setup/api/accounts', {method: 'POST', body: '{}'}); await refresh(); } catch (error) { showNotice(error.message); }
 }
 
-function renderRagThroughput(rag, stale) {
-  const metrics = rag.throughput || {};
-  const unavailable = stale || !rag.running || ['stale', 'paused'].includes(metrics.state);
-  const rate = (value, signed = false) => unavailable || value == null ? '—'
-    : `${signed && value > 0 ? '+' : ''}${value.toLocaleString('ru-RU', {maximumFractionDigits: 2})} текстов/с`;
-  $('ragIndexRate').textContent = rate(metrics.index_per_second);
-  $('ragIncomingRate').textContent = rate(metrics.incoming_per_second, true);
-  $('ragQueueRate').textContent = rate(metrics.queue_per_second, true);
-  $('ragQueueRate').classList.toggle('rag-warning', !unavailable && metrics.queue_per_second > 0);
-  const age = (seconds) => seconds >= 60 ? `${Math.round(seconds / 60)} мин назад` : `${Math.ceil(seconds)} с назад`;
-  const history = metrics.history || [];
-  $('ragRateWindow').textContent = unavailable ? 'Нет свежих замеров скорости.'
-    : metrics.window_seconds ? `Средние скорости за ${Math.round(metrics.window_seconds)} с. Приток — изменение объёма сохранённых текстов с учётом удалений; очередь также учитывает правки.`
-    : 'Нужно минимум 30 секунд замеров. После перезапуска или изменения состава чатов окно собирается заново.';
-  const etaCopy = {
-    warming: 'Собираем замеры…', growing: 'Очередь растёт при текущем притоке',
-    stalled: 'Очередь пока не сокращается', complete: 'Текущая очередь обработана',
-    blocked: 'Часть аккаунтов недоступна', paused: 'Индексация приостановлена',
-    stale: 'Нет свежих замеров',
-  };
-  const eta = metrics.eta_seconds;
-  let forecast = etaCopy[metrics.state] || etaCopy.warming;
-  if (metrics.state === 'draining' && Number.isFinite(eta)) {
-    const minutes = Math.max(1, Math.ceil(eta / 60));
-    forecast = minutes < 60 ? `≈ ${minutes} мин` : minutes < 1440
-      ? `≈ ${Math.floor(minutes / 60)} ч ${minutes % 60} мин`
-      : `≈ ${Math.ceil(minutes / 1440)} дн.`;
-  }
-  $('ragEta').textContent = stale ? 'Нет связи с сервером' : !rag.running ? etaCopy.paused : forecast;
-  $('ragEtaNote').textContent = 'Оценка учитывает чистое сокращение текущей очереди и наблюдаемый приток. Она меняется вместе с темпом; это не срок загрузки всей истории Telegram.';
-  $('ragQueueFigure').hidden = unavailable || history.length < 2;
-  if (!unavailable && history.length >= 2) {
-    const first = history[0]; const last = history[history.length - 1];
-    const values = history.map((point) => point.pending);
-    const low = Math.min(...values); const high = Math.max(...values);
-    const span = first.age_seconds - last.age_seconds;
-    const points = history.map((point) => {
-      const x = span ? 2 + 596 * (first.age_seconds - point.age_seconds) / span : 2;
-      const y = high === low ? 40 : 74 - 68 * (point.pending - low) / (high - low);
-      return `${x},${y}`;
-    });
-    $('ragQueueLine').setAttribute('points', points.join(' '));
-    const delta = last.pending - first.pending;
-    $('ragQueueRange').textContent = `${formatNumber(first.pending)} → ${formatNumber(last.pending)} текстов · изменение ${delta > 0 ? '+' : ''}${formatNumber(delta)} · диапазон графика ${formatNumber(low)}–${formatNumber(high)}`;
-    $('ragQueueChart').setAttribute('aria-label', $('ragQueueRange').textContent);
-    $('ragQueueStart').textContent = age(first.age_seconds);
-    $('ragQueueEnd').textContent = age(last.age_seconds);
-  }
-}
-
 const mediaTypeLabels = {photo:'Фото', video:'Видео', document:'Документы', audio:'Аудио', voice:'Голосовые', video_note:'Видеосообщения', sticker:'Стикеры', animation:'Анимации'};
+const chatKinds = {private:'Личный', group:'Группа', channel:'Канал', unknown:'Уточняется'};
+const chatStates = {error:'Ошибка загрузки', pending:'Загружается', ready:'Готово', off:'Выключено', paused:'Архив остановлен', account_off:'Аккаунт выключен'};
+const ragFilters = {query:'', account:'', kind:'', state:'', rule:'', s3:'', sort:'state', reverse:false, page:1, size:10};
+let selectedChat = null;
+let rowEditor = null;
+let lastVisibleChats = [];
 let ingestionDirty = false;
 let ingestionSaving = false;
 let ingestionOptionsKey = '';
-function ingestionSelection() {
-  const value = $('ingestionScope').value;
-  if (value.startsWith('global:')) return {kind:value.slice(7), ...(data?.media?.defaults?.[value.slice(7)] || {})};
-  return data?.media?.chats?.find(c => `${c.account}:${c.chat}` === value);
+let ingestionRenderedKey = '';
+const ragRowCache = new Map();
+const pagerCache = new Map();
+function element(tag, cls = '', text = '') {const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e;}
+function chatKey(c) {return `${c.account}:${c.chat}`;}
+function setSmall(cell, text, small = '') {
+  if (!cell.firstElementChild) cell.append(element('span'), element('small'));
+  cell.children[0].textContent = text; cell.children[1].textContent = small; cell.children[1].hidden = !small;
 }
-function loadIngestionRule() {
-  const rule = ingestionSelection();
-  const fixed = !rule || rule.kind === 'private';
-  $('ingestionControls').disabled = fixed || ingestionSaving;
-  $('ingestionSave').disabled = fixed || ingestionSaving;
-  $('ingestionInherit').disabled = fixed || !rule?.account || ingestionSaving;
-  $('ingestionOrigin').textContent = !rule ? 'Выберите правило.' : fixed ? 'Личный чат: RAG и все вложения включены постоянно.' : rule.account ? (rule.inherited ? 'Действует общее правило.' : 'Для этого чата задано своё правило.') : 'Применяется к чатам без собственного правила, включая новые.';
-  $('ingestionRag').checked = Boolean(rule?.rag_enabled);
-  $('ingestionS3').checked = Boolean(rule?.s3_enabled);
-  $('ingestionTypes').replaceChildren();
-  Object.entries(mediaTypeLabels).forEach(([type, title]) => {
-    const label = document.createElement('label');
-    const input = document.createElement('input'); input.type = 'checkbox'; input.value = type;
-    input.checked = Boolean(rule?.content_types?.includes(type));
-    label.append(input, document.createTextNode(title)); $('ingestionTypes').append(label);
-  });
+function makePager(id, page, change, locked = false, suffix = '') {
+  let cache = pagerCache.get(id);
+  if (!cache) {
+    const target = $(id), summary = element('span'), controls = element('div', 'pager-controls');
+    const label = element('label', '', 'На странице '), size = element('select'); size.setAttribute('aria-label', `Размер страницы: ${id === 'ragPager' ? 'чаты' : 'операции'}`);
+    [10,25,50,100].forEach(n => size.append(new Option(n,n))); label.append(size);
+    const previous = element('button', 'button', 'Назад'), next = element('button', 'button', 'Далее'), pages = element('span','pager-pages');
+    previous.type = next.type = 'button'; previous.setAttribute('aria-label','Предыдущая страница'); next.setAttribute('aria-label','Следующая страница');
+    controls.append(label, previous, pages, next); target.append(summary,controls);
+    cache = {summary,size,previous,next,pages,key:''}; pagerCache.set(id,cache);
+    size.onchange = () => change(1,Number(size.value)); previous.onclick = () => change(cache.page.page-1,cache.page.size); next.onclick = () => change(cache.page.page+1,cache.page.size);
+  }
+  cache.page = page; cache.summary.textContent = `Показано ${page.start}–${page.end} из ${formatNumber(page.total)}${suffix}`; cache.size.value = String(page.size);
+  cache.size.disabled = locked; cache.previous.disabled = locked || page.page <= 1; cache.next.disabled = locked || page.page >= page.pages;
+  const key = `${page.page}:${page.pages}:${locked}`;
+  if (key !== cache.key) {
+    const numbers = [...new Set([1,page.page-1,page.page,page.page+1,page.pages])].filter(n => n > 0 && n <= page.pages).sort((a,b)=>a-b);
+    const nodes=[]; let last=0;
+    numbers.forEach(n => {if (last && n-last>1) nodes.push(element('span','pager-gap','…')); const b=element('button', 'pager-number', String(n)); b.type='button'; b.disabled=locked; b.setAttribute('aria-label',`Страница ${n}`); if(n===page.page)b.setAttribute('aria-current','page'); b.onclick=()=>change(n,cache.page.size); nodes.push(b);last=n;});
+    cache.pages.replaceChildren(...nodes); cache.key=key;
+  }
+}
+function errorText(code) {
+  const names = {rate_limited:'Пауза Telegram после ограничения', load_paused:'Ожидает своей очереди', media_worker_failed:'Файл не обработан, запланирован повтор', media_transfer_unavailable:'Передача файла временно недоступна', media_queue_unavailable:'Очередь файлов временно недоступна', storage_full:'Недостаточно свободного места', storage_integrity:'Проверка целостности файла не прошла', source_changed:'Исходный файл изменился', file_unavailable:'Исходный файл недоступен', unavailable:'Сервис временно недоступен'};
+  return names[code] || 'Не удалось выполнить загрузку. Повторная попытка запланирована.';
+}
+function renderRagThroughput(rag, stale) {
+  const metrics = rag.throughput || {}, unavailable = stale || !rag.running || ['stale','paused'].includes(metrics.state);
+  const rate = n => unavailable || n == null ? '—' : n.toLocaleString('ru-RU',{maximumFractionDigits:2});
+  $('ragIndexRate').textContent=rate(metrics.index_per_second); $('ragIncomingRate').textContent=rate(metrics.incoming_per_second); $('ragPending').textContent=rag.pending_messages == null ? '—' : formatNumber(rag.pending_messages);
+  $('ragQueueRate').textContent=`Изменение очереди: ${rate(metrics.queue_per_second)} текстов/с.`;
+  const etaCopy={warming:'Собираем замеры',growing:'Очередь растёт',stalled:'Не сокращается',complete:'Обработана',blocked:'Аккаунт недоступен',paused:'Приостановлена',stale:'Нет свежих данных'};
+  let forecast=etaCopy[metrics.state] || etaCopy.warming;
+  if(metrics.state==='draining' && Number.isFinite(metrics.eta_seconds)) {const m=Math.max(1,Math.ceil(metrics.eta_seconds/60)); forecast=m<60?`≈ ${m} мин`:m<1440?`≈ ${Math.floor(m/60)} ч ${m%60} мин`:`≈ ${Math.ceil(m/1440)} дн.`;}
+  $('ragEta').textContent=stale?'Нет связи':!rag.running?etaCopy.paused:forecast;
+  $('ragRateWindow').textContent=unavailable?'Нет свежих замеров.':metrics.window_seconds?`Среднее за ${Math.round(metrics.window_seconds)} с · оценка только для сохранённых текстов`:'Нужно минимум 30 секунд замеров';
+  $('ragEtaNote').textContent='Оценка учитывает приток новых текстов. Полный остаток истории Telegram пока неизвестен.';
+  const history=metrics.history || [];
+  $('ragQueueFigure').dataset.available=String(!unavailable && history.length>=2);
+  if(!unavailable && history.length>=2) {
+    const first=history[0],last=history[history.length-1],values=history.map(p=>p.pending),low=Math.min(...values),high=Math.max(...values);
+    $('ragQueueRange').textContent=`${formatNumber(first.pending)} → ${formatNumber(last.pending)} текстов · диапазон ${formatNumber(low)}–${formatNumber(high)}`;
+    const age=s=>s>=60?`${Math.round(s/60)} мин назад`:`${Math.ceil(s)} с назад`;
+    $('ragQueueStart').textContent=age(first.age_seconds);$('ragQueueEnd').textContent=age(last.age_seconds);
+  } else {$('ragQueueRange').textContent=unavailable?'Нет свежих данных для графика':'История очереди · собираем замеры';$('ragQueueStart').textContent='';$('ragQueueEnd').textContent='';}
+  drawRagQueue();
+}
+function drawRagQueue() {
+  const canvas=$('ragQueueChart'); if(!canvas.offsetParent)return;
+  const w=canvas.clientWidth,h=80,dpr=window.devicePixelRatio || 1; canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+  const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.clearRect(0,0,w,h);
+  const history=data?.rag?.throughput?.history || [];
+  if($('ragQueueFigure').dataset.available!=='true'||history.length<2)return;
+  const values=history.map(p=>p.pending),lo=Math.min(...values),hi=Math.max(...values),first=history[0].age_seconds,span=first-history[history.length-1].age_seconds;
+  ctx.strokeStyle='#203247';ctx.lineWidth=1;[8,40,72].forEach(y=>{ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();});
+  ctx.strokeStyle='#4b92ff';ctx.lineWidth=2;ctx.beginPath();
+  history.forEach((p,i)=>{const x=span?3+(w-6)*(first-p.age_seconds)/span:3,y=hi===lo?40:72-64*(p.pending-lo)/(hi-lo);if(i)ctx.lineTo(x,y);else ctx.moveTo(x,y);});ctx.stroke();
+  canvas.setAttribute('aria-label',$('ragQueueRange').textContent);
+}
+function ingestionSelection() {const kind=$('ingestionScope').value.slice(7);return data?.media?.defaults?.[kind];}
+function loadIngestionRule(force=false) {
+  const rule=ingestionSelection(),fixed=!rule || rule.kind==='private';
+  $('ingestionControls').disabled=fixed || ingestionSaving || ragStale; $('ingestionSave').disabled=fixed || ingestionSaving || ragStale; $('ingestionInherit').hidden=true;
+  $('ingestionOrigin').textContent=!rule?'Правила пока недоступны.':fixed?'Личные чаты: тексты и все типы вложений включены постоянно.':'Общее правило действует для чатов без собственного переопределения.';
+  const signature=JSON.stringify(rule);if(!force&&signature===ingestionRenderedKey)return;ingestionRenderedKey=signature;
+  $('ingestionRag').checked=Boolean(rule?.rag_enabled);$('ingestionS3').checked=Boolean(rule?.s3_enabled);
+  $('ingestionTypes').replaceChildren(...Object.entries(mediaTypeLabels).map(([type,title])=>{const label=element('label'),input=element('input');input.type='checkbox';input.value=type;input.checked=Boolean(rule?.content_types?.includes(type));label.append(input,document.createTextNode(title));return label;}));
 }
 function renderIngestion(stale) {
-  const media = data?.media;
-  $('mediaState').textContent = stale ? 'Нет связи с сервером. Состояние S3 могло устареть.' : media?.status_error ? 'Состояние S3 недоступно. Повторная попытка через 4 секунды.' : !media?.configured ? 'S3 не настроен. Правила сохраняются, файлы пока не выгружаются.' : `S3: ${formatNumber(media.files_uploaded || 0)} файлов сохранено · ${formatNumber((media.jobs?.pending || 0) + (media.jobs?.downloading || 0) + (media.jobs?.error || 0))} в очереди · ${formatNumber(media.jobs?.error || 0)} ошибок · ${formatNumber(media.pending_deletions || 0)} ожидают удаления${media.deletion_errors ? ' · есть ошибки удаления' : ''}${media.last_error ? ` · ${media.last_error}` : !media.running ? ' · задачи остановлены' : ''}.`;
-  const choices = [['global:group','Общее правило: группы'],['global:channel','Общее правило: каналы'], ...(media?.chats || []).map(c => [`${c.account}:${c.chat}`, `${c.title || c.chat} · ${data.accounts.find(a => a.account_id === c.account)?.label || c.account}`])];
-  const key = JSON.stringify(choices);
-  if (key !== ingestionOptionsKey && !ingestionDirty && !ingestionSaving) {
-    const selected = $('ingestionScope').value;
-    $('ingestionScope').replaceChildren(...choices.map(([value,title]) => {const option = document.createElement('option');option.value=value;option.textContent=title;return option;}));
-    if (choices.some(c => c[0] === selected)) $('ingestionScope').value = selected;
-    ingestionOptionsKey = key;
-  }
-  if (!ingestionDirty && !ingestionSaving) loadIngestionRule();
+  const m=data?.media;
+  $('ingestionCancel').hidden=!ingestionDirty&&!ingestionSaving;
+  $('mediaState').textContent=stale?'Нет связи с сервером. Показаны последние данные.':m?.status_error?'Не удалось прочитать состояние хранилища.':!m?.configured?'S3 не настроен. Правила сохраняются, файлы пока не выгружаются.':`S3: ${formatNumber(m.files_uploaded)} файлов сохранено · ${formatNumber((m.jobs?.pending || 0)+(m.jobs?.downloading || 0)+(m.jobs?.error || 0))} в очереди · ${formatNumber(m.jobs?.error)} с ошибками · ${formatNumber(m.pending_deletions)} ожидают удаления.${m.last_error?' '+errorText(m.last_error):''}${m.deletion_errors?' Есть ошибки удаления.':''}`;
+  $('settingsModel').textContent=data?.rag?.embedding_model || 'Не настроена';$('settingsS3').textContent=m?.configured?'Подключено':m?.status_error?'Состояние недоступно':'Не настроено';
+  if(!ingestionOptionsKey && m?.defaults) {['private','group','channel'].forEach(k=>$('ingestionScope').append(new Option(chatKinds[k],`global:${k}`)));$('ingestionScope').value='global:group';ingestionOptionsKey='global:group';}
+  if(!ingestionDirty&&!ingestionSaving)loadIngestionRule();
+  else {const fixed=!ingestionSelection()||ingestionSelection().kind==='private';$('ingestionControls').disabled=fixed||ingestionSaving||stale;$('ingestionSave').disabled=fixed||ingestionSaving||stale;}
+  const errors=(m?.jobs?.error || 0)+(m?.deletion_errors || 0);
+  $('ragAlert').classList.toggle('has-errors',Boolean(errors || m?.last_error || m?.status_error));
+  $('ragAlertText').textContent=stale?'Нет связи с сервером':m?.status_error?'Состояние S3 недоступно':errors?`${formatNumber(errors)} файлов требуют внимания · повтор запланирован`:m?.last_error?errorText(m.last_error):!m?.configured?'S3 не настроен':!m.running?'Задачи S3 остановлены':`${formatNumber(m.files_uploaded)} файлов в S3 · ${formatNumber((m.jobs?.pending || 0)+(m.jobs?.downloading || 0))} в очереди`;
 }
-$('ingestionScope').onchange = () => {ingestionDirty = false; $('ingestionResult').textContent = ''; loadIngestionRule();};
-$('ingestionControls').onchange = () => {ingestionDirty = true;};
-async function saveIngestion(inherit) {
-  const rule = ingestionSelection(); if (!rule || rule.kind === 'private' || ingestionSaving) return;
-  ingestionSaving = true; $('ingestionSave').disabled = true; $('ingestionInherit').disabled = true; $('ingestionControls').disabled = true; $('ingestionScope').disabled = true;
-  $('ingestionResult').textContent = 'Сохраняем…';
-  try {
-    await api('/setup/api/ingestion-policy', {method:'POST', body:JSON.stringify({kind:rule.kind, account:rule.account || '', chat:rule.chat || '', rag_enabled:$('ingestionRag').checked, s3_enabled:$('ingestionS3').checked, content_types:[...$('ingestionTypes').querySelectorAll('input:checked')].map(i => i.value), inherit})});
-    ingestionDirty = false;
-    $('ingestionResult').textContent = 'Правило сохранено. Существующие данные сохраняются; новые типы вложений добавляются в очередь.';
-  } catch (error) { $('ingestionResult').textContent = `Не удалось сохранить: ${error.message}. Повторите попытку.`; }
-  finally {
-    ingestionSaving = false; $('ingestionScope').disabled = false; await refresh();
-    const current = ingestionSelection(); const fixed = !current || current.kind === 'private';
-    $('ingestionControls').disabled = fixed; $('ingestionSave').disabled = fixed;
-    $('ingestionInherit').disabled = fixed || !current?.account;
-  }
+async function saveIngestion() {
+  const rule=ingestionSelection();if(!rule || rule.kind==='private'||ingestionSaving||ragStale)return;
+  ingestionSaving=true;$('ingestionCancel').disabled=true;$('ingestionControls').disabled=true;$('ingestionSave').disabled=true;$('ingestionScope').disabled=true;$('ingestionResult').textContent='Сохраняем…';
+  try{await api('/setup/api/ingestion-policy',{method:'POST',body:JSON.stringify({kind:rule.kind,rag_enabled:$('ingestionRag').checked,s3_enabled:$('ingestionS3').checked,content_types:qa('#ingestionTypes input:checked').map(i=>i.value)})});ingestionDirty=false;$('ingestionResult').textContent='Общее правило сохранено. Индивидуальные переопределения продолжают действовать.';}
+  catch(error){$('ingestionResult').textContent=`Не удалось сохранить: ${error.message}. Повторите попытку.`;}
+  finally{ingestionSaving=false;$('ingestionCancel').disabled=false;$('ingestionScope').disabled=false;await refresh();const fixed=!ingestionSelection()||ingestionSelection().kind==='private';$('ingestionControls').disabled=fixed||ragStale;$('ingestionSave').disabled=fixed||ragStale;}
 }
-$('ingestionForm').onsubmit = (event) => {event.preventDefault(); saveIngestion(false);};
-$('ingestionInherit').onclick = () => saveIngestion(true);
-
-function renderRag(stale = ragStale) {
-  ragStale = stale;
-  renderIngestion(stale);
-  const rag = data?.rag;
-  const state = $('ragState');
-  const details = $('ragDetails');
-  state.classList.toggle('rag-warning', stale || Boolean(rag?.status_error || rag?.last_error || rag?.chat_errors));
-  if (!rag || rag.status_error || !rag.enabled) {
-    details.hidden = true;
-    state.textContent = stale ? 'Нет связи с сервером. Состояние RAG недоступно.'
-      : rag?.status_error ? 'Не удалось прочитать состояние RAG. Повторная попытка через 4 секунды.'
-      : rag ? 'Фоновый RAG выключен. Включите его в конфигурации сервера.' : 'Загрузка состояния RAG…';
-    return;
-  }
-  details.hidden = false;
-  state.textContent = stale ? 'Нет связи с сервером. Ниже последние полученные данные; они могли устареть.'
-    : !rag.running ? 'Фоновые задачи остановлены.'
-    : rag.last_error ? `Фоновая задача ожидает повторной попытки: ${rag.last_error}`
-    : rag.chat_errors ? `RAG работает. Чатов с ограничениями или ошибками: ${formatNumber(rag.chat_errors)}. Подробности ниже.`
-    : 'RAG работает. Данные обновляются каждые 4 секунды.';
-  renderRagThroughput(rag, stale);
-  const count = (value) => value == null ? '—' : formatNumber(value);
-  const date = (value) => value ? formatDateTime(value) : '—';
-  const epoch = (value) => value ? date(value * 1000) : '—';
-  const accountName = (id) => data.accounts.find((a) => a.account_id === id)?.label || id;
-  $('ragHistory').textContent = `${count(rag.selected_chats)} чатов · история загружена до начала в ${count(rag.history_complete_chats)} · ещё не загружались ${count(rag.never_synced_chats)} · сохранено ${count(rag.archived_messages)} сообщений`;
-  $('ragIndex').textContent = `${count(rag.indexed_messages)} из ${count(rag.eligible_messages)} сохранённых текстов в индексе · осталось ${count(rag.pending_messages)}`;
-  const progress = $('ragProgress');
-  if (rag.pending_messages == null) progress.removeAttribute('value');
-  else progress.value = rag.eligible_messages ? 100 * rag.indexed_messages / rag.eligible_messages : 0;
-  $('ragModel').textContent = `Локальная модель: ${rag.embedding_model || '—'}. Пустые сообщения и сообщения без текста не входят в очередь индексации.`;
-  $('ragTimes').textContent = `Обнаружение чатов: ${date(rag.last_discovery)} · индексация: ${date(rag.last_index)} · снимок: ${date(rag.observed_at)}`;
-  const cell = (row, value, cls) => { const td = document.createElement('td'); td.textContent = value; if (cls) td.className = cls; row.append(td); return td; };
-  $('ragAccounts').replaceChildren();
-  data.accounts.filter((a) => a.enabled !== false).forEach((account) => {
-    const policy = (rag.loading || []).find((p) => p.account === account.account_id);
-    const row = document.createElement('tr');
-    cell(row, accountName(account.account_id));
-    cell(row, `${(policy?.interval ?? 2).toLocaleString('ru-RU', {maximumFractionDigits: 1})} с`);
-    cell(row, policy?.cooldown_until * 1000 > Date.now() ? epoch(policy.cooldown_until) : 'Нет паузы');
-    cell(row, epoch(policy?.last_limited));
-    cell(row, count(policy?.limits ?? 0));
-    $('ragAccounts').append(row);
+function allRagChats() {
+  const stats=new Map((data?.rag?.chats || []).map(c=>[chatKey(c),c]));
+  const accounts=new Map((data?.accounts || []).map(a=>[a.account_id,a]));
+  return (data?.media?.chats || []).map(c=>({...c,...stats.get(chatKey(c)),rag_enabled:c.rag_enabled,s3_enabled:c.s3_enabled,enabled:c.enabled,kind:c.kind,accountName:accounts.get(c.account)?.label || c.account,accountEnabled:accounts.get(c.account)?.enabled!==false,mediaConfigured:Boolean(data?.media?.configured),ragRunning:Boolean(data?.rag?.enabled&&data?.rag?.running),mediaRunning:Boolean(data?.media?.running)}));
+}
+function renderFacet(target,legend,options,current,change) {
+  const el=$(target),key=options.map(o=>o.value).join('|');
+  if(el.dataset.key!==key){const group=element('div');group.append(element('h3','',legend));options.forEach(o=>{const b=element('button','facet-button');b.type='button';b.dataset.value=o.value;b.append(element('span'),element('small'));b.onclick=()=>change(o.value);group.append(b);});el.replaceChildren(group);el.dataset.key=key;}
+  qa('button',el).forEach((b,i)=>{const o=options[i];b.children[0].textContent=o.label;const ico=element('i',`ph ${target==='ragAccountFacets'?'ph-user':target==='ragKindFacets'?(o.value==='private'?'ph-user':o.value==='channel'?'ph-paper-plane-tilt':'ph-users'):o.value==='error'?'ph-warning-circle':o.value==='ready'?'ph-check':o.value==='off'?'ph-pause':'ph-clock-counter-clockwise'}`);b.children[0].prepend(ico);b.children[1].textContent=formatNumber(o.count);b.setAttribute('aria-pressed',String(current===o.value));b.disabled=Boolean(rowEditor?.dirty||rowEditor?.saving);});
+}
+function changeRagFilter(key,value) {if(rowEditor?.dirty||rowEditor?.saving)return;selectedChat=null;rowEditor=null;ragFilters[key]=value;ragFilters.page=1;ragFilters.reverse=false;renderRagTable();}
+function createPolicyEditor(chat) {
+  const box=element('div','inline-policy'),meta=element('div','policy-meta'),form=element('form','inline-policy-form');
+  meta.append(element('h3','',chat.title || chat.chat),element('p','rag-muted',`${chatKinds[chat.kind] || chatKinds.unknown} · ${chat.accountName}`),element('code','',`ID: ${chat.chat}`),element('p','rag-muted','Изменения применяются только к этому чату. Существующие данные сохраняются.'));
+  const origin=element('p','policy-origin'),fieldset=element('fieldset');fieldset.append(element('legend','','Правила загрузки'));
+  function toggle(title,description,value) {const label=element('label','policy-toggle'),copy=element('span'),input=element('input');input.type='checkbox';input.setAttribute('role','switch');input.checked=value;copy.append(element('strong','',title),element('small','',description));label.append(input,copy);fieldset.append(label);return input;}
+  const rag=toggle('Загружать тексты в RAG','Тексты сообщений сохраняются и попадают в индекс.',Boolean(chat.rag_enabled));
+  const s3=toggle('Загружать вложения в S3','Сохраняются оригинальные файлы выбранных типов.',Boolean(chat.s3_enabled));
+  fieldset.append(element('p','policy-types-title','Разрешённые типы вложений'));
+  const types=element('div','policy-types');Object.entries(mediaTypeLabels).forEach(([type,title])=>{const label=element('label'),input=element('input');input.type='checkbox';input.value=type;input.checked=chat.content_types.includes(type);label.append(input,document.createTextNode(title));types.append(label);});fieldset.append(types,element('p','rag-muted','Типы применяются при включённом S3. Без распознавания изображений и расшифровки аудио.'));
+  const actions=element('div','policy-actions'),inherit=element('button','text-button','Использовать общее правило'),cancel=element('button','button','Отменить изменения'),save=element('button','button primary','Сохранить правило'),result=element('p','policy-result');result.setAttribute('role','status');inherit.type=cancel.type='button';save.type='submit';actions.append(inherit,cancel,save);meta.append(origin);form.append(fieldset,actions,result);box.append(meta,form);
+  const editor={box,chat:{...chat},origin,form,fieldset,rag,s3,types,inherit,cancel,save,result,dirty:false,saving:false,signature:JSON.stringify([chat.rag_enabled,chat.s3_enabled,chat.content_types,chat.inherited])};
+  form.onchange=()=>{editor.dirty=true;result.textContent='Есть несохранённые изменения. Сохраните или отмените их перед переходом к другому чату.';lockRagControls();};
+  cancel.onclick=()=>{selectedChat=null;rowEditor=null;renderRagTable();ragRowCache.get(chatKey(chat))?.button.focus();};
+  form.onsubmit=e=>{e.preventDefault();savePolicyEditor(editor,false);};inherit.onclick=()=>savePolicyEditor(editor,true);
+  updatePolicyEditor(editor,chat);return editor;
+}
+function updatePolicyEditor(editor,chat) {
+  const fixed=!chat||!['group','channel'].includes(chat.kind),signature=chat?JSON.stringify([chat.rag_enabled,chat.s3_enabled,chat.content_types,chat.inherited]):'';
+  if(chat&&!editor.dirty&&!editor.saving&&signature!==editor.signature){editor.rag.checked=Boolean(chat.rag_enabled);editor.s3.checked=Boolean(chat.s3_enabled);qa('input',editor.types).forEach(i=>i.checked=chat.content_types.includes(i.value));editor.signature=signature;}
+  editor.chat=chat || editor.chat;editor.origin.textContent=!chat?'Чат больше не доступен. Черновик сохранён до отмены.':fixed?chat.kind==='private'?'Личный чат: тексты и все файлы включены постоянно.':'Тип чата ещё уточняется. Дождитесь обновления списка.':chat.inherited?'Действует общее правило. Сохранение создаст переопределение для чата.':'Своё правило: общее правило этого типа чатов не применяется.';
+  editor.fieldset.disabled=fixed||editor.saving||ragStale;editor.save.disabled=fixed||editor.saving||ragStale;editor.inherit.disabled=fixed||editor.saving||ragStale||chat?.inherited;editor.cancel.disabled=editor.saving;editor.cancel.textContent=editor.dirty?'Отменить изменения':'Закрыть';
+  editor.save.textContent=editor.saving?'Сохраняем…':'Сохранить правило';
+}
+async function savePolicyEditor(editor,inherit) {
+  if(editor.saving||editor.save.disabled)return;
+  editor.saving=true;editor.result.textContent='Сохраняем…';updatePolicyEditor(editor,editor.chat);lockRagControls();
+  const c=editor.chat;
+  try {await api('/setup/api/ingestion-policy',{method:'POST',body:JSON.stringify({account:c.account,chat:c.chat,kind:c.kind,rag_enabled:editor.rag.checked,s3_enabled:editor.s3.checked,content_types:qa('input:checked',editor.types).map(i=>i.value),inherit})});editor.dirty=false;editor.result.textContent='Правило сохранено. Существующие данные сохранены.';await refresh();}
+  catch(error){editor.result.textContent=`Не удалось сохранить: ${error.message}. Изменения сохранены в форме; повторите попытку.`;}
+  finally{editor.saving=false;updatePolicyEditor(editor,allRagChats().find(x=>chatKey(x)===chatKey(c)));renderRagTable();}
+}
+function lockRagControls() {
+  const locked=Boolean(rowEditor?.dirty||rowEditor?.saving);
+  ['ragSearch','ragSort','ragRuleFilter','ragS3Filter','ragReset'].forEach(id=>$(id).disabled=locked);
+  qa('.rag-facets button, [data-rag-sort]').forEach(b=>b.disabled=locked);
+  ragRowCache.forEach(c=>{c.button.disabled=locked && c.key!==selectedChat;c.titleButton.disabled=c.button.disabled;});
+  if(locked)qa('#ragPager button, #ragPager select').forEach(e=>e.disabled=true);
+}
+function renderRagTable() {
+  const all=allRagChats(),lookup=new Map(all.map(c=>[chatKey(c),c]));
+  if(rowEditor)updatePolicyEditor(rowEditor,lookup.get(selectedChat));
+  const options=(values,key)=>values.map(([value,label])=>({value,label,count:value?all.filter(c=>key==='state'?(value==='off'?['off','paused','account_off'].includes(TgTables.stateOf(c)):TgTables.stateOf(c)===value):c[key]===value).length:all.length}));
+  renderFacet('ragAccountFacets','Аккаунт',[{value:'',label:'Все',count:all.length},...(data?.accounts || []).map(a=>({value:a.account_id,label:a.label||a.account_id,count:all.filter(c=>c.account===a.account_id).length}))],ragFilters.account,v=>changeRagFilter('account',v));
+  renderFacet('ragKindFacets','Тип чата',options([['','Все'],['private','Личные'],['group','Группы'],['channel','Каналы'],...(all.some(c=>c.kind==='unknown')?[['unknown','Уточняются']]:[])],'kind'),ragFilters.kind,v=>changeRagFilter('kind',v));
+  renderFacet('ragStateFacets','Состояние',options([['','Все'],['pending','Загружаются'],['error','С ошибками'],['ready','Готовы'],['off','Выключены']],'state'),ragFilters.state,v=>changeRagFilter('state',v));
+  const filtered=TgTables.selectChats(all,ragFilters),page=TgTables.paginate(filtered,ragFilters.page,ragFilters.size);ragFilters.page=page.page;
+  if(rowEditor)page.items=lastVisibleChats.map(k=>lookup.get(k)||(k===selectedChat?rowEditor.chat:null)).filter(Boolean);else lastVisibleChats=page.items.map(chatKey);
+  document.querySelector('.rag-result-line').hidden=!['query','account','kind','state','rule','s3'].some(k=>ragFilters[k]);
+  $('ragChatHeading').textContent=`Чаты (${formatNumber(all.length)})`;$('ragChatSummary').textContent=filtered.length===all.length?`Все ${formatNumber(all.length)} чатов · личные, группы и каналы`:`По фильтрам: ${formatNumber(filtered.length)} из ${formatNumber(all.length)}`;
+  const wanted=[];
+  page.items.forEach(c=>{
+    const key=chatKey(c);let cached=ragRowCache.get(key);
+    if(!cached){const tr=element('tr'),cells=Array.from({length:8},()=>element('td')),button=element('button','row-disclosure');button.type='button';button.append(element('i','ph ph-caret-right'));button.onclick=()=>{if(rowEditor?.dirty||rowEditor?.saving){showNotice('Сначала сохраните или отмените текущее правило.');return;}if(selectedChat===key){selectedChat=null;rowEditor=null;}else{selectedChat=key;rowEditor=createPolicyEditor(allRagChats().find(x=>chatKey(x)===key));}renderRagTable();};const titleButton=element('button','chat-title-button');titleButton.type='button';titleButton.onclick=()=>button.click();cells[0].append(titleButton,element('small'));cells[7].append(button);tr.append(...cells);cached={key,tr,cells,button,titleButton,detail:element('tr','policy-detail-row')};const td=element('td');td.colSpan=8;cached.detail.append(td);ragRowCache.set(key,cached);}
+    const {tr,cells,button,detail}=cached,state=TgTables.stateOf(c);tr.classList.toggle('selected',key===selectedChat);tr.dataset.state=state;
+    cached.titleButton.title=c.title||c.chat;setSmall(cells[0],c.title||c.chat,c.kind==='private'?'Фиксированное правило':c.inherited?'Общее правило':'Своё правило');
+    cells[1].textContent=c.accountName;cells[2].textContent=chatKinds[c.kind]||chatKinds.unknown;
+    setSmall(cells[3],!c.rag_enabled?(c.s3_enabled?'Только файлы':'Выключена'):c.backfill_complete?'До начала':c.last_sync?'Загружается':'Ожидает загрузки',c.last_sync?formatDateTime(c.last_sync):'');
+    setSmall(cells[4],!c.rag_enabled?'Выключен':c.indexed==null?'Нет данных':formatNumber(c.indexed),c.rag_enabled&&c.eligible!=null?`из ${formatNumber(c.eligible)} текстов`:'');
+    setSmall(cells[5],!c.s3_enabled?'Выключены':!c.mediaConfigured?'S3 не настроен':`${formatNumber(c.media_uploaded)} файлов`,c.s3_enabled&&c.mediaConfigured?`${formatNumber(c.media_pending)} в очереди`:'');
+    setSmall(cells[6],chatStates[state],c.error?errorText(c.error):c.media_errors?'Повтор запланирован':'');cells[6].className=`chat-state ${state}`;
+    button.setAttribute('aria-label',`${key===selectedChat?'Закрыть':'Открыть'} правило: ${c.title||c.chat}`);button.setAttribute('aria-expanded',String(key===selectedChat));
+    wanted.push(tr);
+    if(key===selectedChat&&rowEditor){if(detail.firstChild.firstChild!==rowEditor.box)detail.firstChild.replaceChildren(rowEditor.box);wanted.push(detail);}
   });
-  $('ragChatSummary').textContent = `${count(rag.ready_accounts)} аккаунтов готовы · ${count(rag.chat_errors)} чатов с ограничениями или ошибками. Лимит чата показан до следующей успешной загрузки.`;
-  const mode = $('ragFilter').value;
-  const chats = (rag.chats || []).filter((c) => mode === 'errors' ? c.error : mode === 'pending' ? !c.backfill_complete : true);
-  $('ragChats').replaceChildren();
-  chats.forEach((chat) => {
-    const row = document.createElement('tr');
-    const title = cell(row, chat.title || chat.chat);
-    const subtitle = document.createElement('small'); subtitle.textContent = accountName(chat.account); title.append(subtitle);
-    cell(row, chat.backfill_complete ? 'До начала' : chat.last_sync ? 'Загружается' : 'В очереди');
-    cell(row, `${count(chat.eligible)} / ${count(chat.indexed)}`);
-    cell(row, date(chat.last_sync));
-    cell(row, chat.error === 'rate_limited' ? 'Лимит Telegram' : chat.error || 'Без ошибок', chat.error ? 'rag-warning' : '');
-    $('ragChats').append(row);
-  });
-  if (!chats.length) { const row = document.createElement('tr'); const td = cell(row, mode === 'all' ? 'Чаты ещё не обнаружены.' : 'Нет чатов по этому фильтру.'); td.colSpan = 5; $('ragChats').append(row); }
+  if(!wanted.length){const tr=element('tr'),td=element('td','table-empty',data?.media?.status_error?'Список чатов временно недоступен.':all.length?'По этим фильтрам чатов нет. Сбросьте фильтры или измените запрос.':'Чаты ещё не обнаружены.');td.colSpan=8;tr.append(td);wanted.push(tr);}
+  // Keep the expanded editor connected: polling must preserve focused inputs and drafts.
+  const body=$('ragChats'),keep=new Set(wanted);let cursor=body.firstChild;
+  wanted.forEach(node=>{if(cursor===node)cursor=cursor.nextSibling;else body.insertBefore(node,cursor);});[...body.childNodes].forEach(n=>{if(!keep.has(n))n.remove();});
+  for(const [key,value] of ragRowCache)if(!lookup.has(key)&&key!==selectedChat){value.tr.remove();ragRowCache.delete(key);}
+  makePager('ragPager',page,(p,size)=>{if(rowEditor?.dirty||rowEditor?.saving)return;selectedChat=null;rowEditor=null;ragFilters.page=p;ragFilters.size=size;renderRagTable();},Boolean(rowEditor?.dirty||rowEditor?.saving));
+  qa('[data-rag-sort]').forEach(b=>b.parentNode.setAttribute('aria-sort',b.dataset.ragSort===ragFilters.sort?((['pending','recent'].includes(ragFilters.sort)!==ragFilters.reverse)?'descending':'ascending'):'none'));lockRagControls();
 }
+function renderRag(stale=ragStale) {
+  ragStale=stale;renderIngestion(stale);const rag=data?.rag || {},state=$('ragState');
+  state.classList.toggle('rag-warning',Boolean(stale||rag.last_error||rag.status_error));
+  state.textContent=stale?'Нет связи с сервером. Показаны последние данные.':rag.status_error?'Состояние индексации временно недоступно.':!rag.enabled?'Фоновый RAG выключен в конфигурации сервера.':!rag.running?'Фоновые задачи остановлены.':rag.last_error?errorText(rag.last_error):`Индекс обновляется · ${formatNumber(rag.ready_accounts)} аккаунта готовы`;
+  renderRagThroughput(rag,stale||Boolean(rag.status_error));
+  const count=n=>n==null?'—':formatNumber(n),date=v=>v?formatDateTime(v):'—';
+  $('ragHistory').textContent=`История достигла начала в ${count(rag.history_complete_chats)} из ${count(rag.selected_chats)} активных чатов · сохранено ${count(rag.archived_messages)} сообщений. Полный остаток Telegram пока неизвестен.`;
+  $('ragIndex').textContent=`В индексе ${count(rag.indexed_messages)} из ${count(rag.eligible_messages)} сохранённых текстов · осталось ${count(rag.pending_messages)}.`;
+  $('ragModel').textContent=`Локальная модель: ${rag.embedding_model || 'не настроена'}. Пустые сообщения не индексируются.`;
+  $('ragTimes').textContent=`Обнаружение: ${date(rag.last_discovery)} · индексация: ${date(rag.last_index)} · снимок: ${date(rag.observed_at)}`;
+  $('ragAccounts').replaceChildren(...(data?.accounts || []).map(a=>{const p=(rag.loading || []).find(p=>p.account===a.account_id),tr=element('tr');[a.label||a.account_id,p?.interval==null?'—':`${p.interval.toLocaleString('ru-RU',{maximumFractionDigits:1})} с`,p?.cooldown_until*1000>Date.now()?date(p.cooldown_until*1000):'Нет паузы',p?.last_limited?date(p.last_limited*1000):'—',count(p?.limits)].forEach(v=>tr.append(element('td','',v)));return tr;}));
+  renderRagTable();
+}
+$('ingestionScope').onchange=()=>{if(ingestionDirty){$('ingestionScope').value=ingestionOptionsKey;showNotice('Сначала сохраните или отмените изменения общего правила.');return;}ingestionOptionsKey=$('ingestionScope').value;$('ingestionResult').textContent='';loadIngestionRule();};
+$('ingestionControls').onchange=()=>{$('ingestionCancel').hidden=false;ingestionDirty=true;$('ingestionScope').disabled=true;};
+$('ingestionForm').onsubmit=e=>{e.preventDefault();saveIngestion();};$('ingestionInherit').onclick=()=>{};
+$('ingestionCancel').onclick=()=>{if(ingestionSaving)return;$('ingestionCancel').hidden=true;ingestionDirty=false;$('ingestionScope').disabled=false;$('ingestionResult').textContent='Изменения отменены.';loadIngestionRule(true);};
+$('ragSearch').oninput=()=>changeRagFilter('query',$('ragSearch').value);
+$('ragSort').onchange=()=>changeRagFilter('sort',$('ragSort').value);
+$('ragRuleFilter').onchange=()=>changeRagFilter('rule',$('ragRuleFilter').value);
+$('ragS3Filter').onchange=()=>changeRagFilter('s3',$('ragS3Filter').value);
+$('ragReset').onclick=()=>{if(rowEditor?.dirty||rowEditor?.saving)return;selectedChat=null;rowEditor=null;Object.assign(ragFilters,{query:'',account:'',kind:'',state:'',rule:'',s3:'',sort:'state',reverse:false,page:1});$('ragSearch').value='';$('ragSort').value='state';$('ragRuleFilter').value=$('ragS3Filter').value='';renderRagTable();};
+qa('[data-rag-sort]').forEach(b=>b.onclick=()=>{if(rowEditor?.dirty||rowEditor?.saving)return;selectedChat=null;rowEditor=null;if(ragFilters.sort===b.dataset.ragSort)ragFilters.reverse=!ragFilters.reverse;else{ragFilters.sort=b.dataset.ragSort;ragFilters.reverse=false;}ragFilters.page=1;$('ragSort').value=ragFilters.sort;renderRagTable();});
+$('ragMoreFilters').onclick=()=>{const open=$('ragExtraFilters').hidden;$('ragExtraFilters').hidden=!open;$('ragMoreFilters').setAttribute('aria-expanded',String(open));};
+$('ragAlert').onclick=()=>{const open=$('ragDiagnostics').hidden;$('ragDiagnostics').hidden=!open;$('ragAlert').setAttribute('aria-expanded',String(open));};
+['Rules','Info'].forEach(name=>{const tab=$(`settings${name}Tab`);tab.onclick=()=>{['Rules','Info'].forEach(n=>{$(`settings${n}`).hidden=n!==name;$(`settings${n}Tab`).setAttribute('aria-selected',String(n===name));$(`settings${n}Tab`).tabIndex=n===name?0:-1;});};tab.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const next=e.key==='Home'?'Rules':e.key==='End'?'Info':name==='Rules'?'Info':'Rules';$(`settings${next}Tab`).click();$(`settings${next}Tab`).focus();}};});$('settingsInfoTab').tabIndex=-1;
+window.addEventListener('resize',drawRagQueue);
 
 async function refresh() {
   try {
@@ -673,8 +726,8 @@ $('sidebarScrim').onclick = closeSidebar;
 $('headerConnect').onclick = startAccount; $('startAccount').onclick = startAccount;
 $('botForm').onsubmit = async (event) => { event.preventDefault(); try { await api('/setup/api/bots', {method: 'POST', body: JSON.stringify({label: $('botLabel').value, token: $('botToken').value})}); $('botLabel').value = ''; $('botToken').value = ''; showNotice('Бот подключён', true); await refresh(); } catch (error) { showNotice(error.message); } };
 qa('#rangeSelector button').forEach((button) => button.addEventListener('click', () => { selectedDays = Number(button.dataset.days); qa('#rangeSelector button').forEach((item) => item.classList.toggle('active', item === button)); renderAnalytics(); }));
-['historySearch', 'identityFilter', 'actionFilter', 'statusFilter'].forEach((id) => $(id).addEventListener(id === 'historySearch' ? 'input' : 'change', renderHistory));
-qa('[data-table-tab]').forEach((button) => button.addEventListener('click', () => { qa('[data-table-tab]').forEach((item) => item.classList.toggle('active', item === button)); const history = button.dataset.tableTab === 'history'; $('historyToolbar').hidden = !history; $('historyTableWrap').hidden = !history; $('usageTableWrap').hidden = history; }));
+['historySearch', 'identityFilter', 'actionFilter', 'statusFilter','historySort'].forEach((id) => $(id).addEventListener(id === 'historySearch' ? 'input' : 'change', ()=>{historyPage=1;renderHistory();}));
+qa('[data-table-tab]').forEach((button) => button.addEventListener('click', () => { qa('[data-table-tab]').forEach((item) => item.classList.toggle('active', item === button)); const history = button.dataset.tableTab === 'history'; $('historyToolbar').hidden = !history; $('historyTableWrap').hidden = !history; $('usageTableWrap').hidden = history; $('historyPager').hidden = !history; }));
 qa('[data-copy="endpoint"]').forEach((button) => button.addEventListener('click', async () => { try { await navigator.clipboard.writeText(`${location.origin}/mcp`); showNotice('MCP endpoint скопирован', true); } catch { showNotice('Не удалось скопировать endpoint'); } }));
 window.addEventListener('resize', startChartAnimation);
 document.addEventListener('visibilitychange', () => {
@@ -687,6 +740,6 @@ if (reducedChartMotion.addEventListener) {
 
 const endpoint = `${location.origin}/mcp`; $('endpointValue').textContent = endpoint.replace(/^https?:\/\//, ''); $('endpointFull').textContent = endpoint;
 $('todayLabel').textContent = new Intl.DateTimeFormat('ru-RU', {day: 'numeric', month: 'long', year: 'numeric'}).format(new Date());
-$('ragFilter').onchange = () => renderRag();
-if (location.hash === '#rag') navigate('rag');
+
+if (viewCopy[location.hash.slice(1)]) navigate(location.hash.slice(1));
 refresh(); setInterval(refresh, 4000);

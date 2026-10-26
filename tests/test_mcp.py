@@ -216,6 +216,7 @@ async def test_real_sdk_lists_tools_and_routes_explicit_ids(endpoint, mode):
             "delete_memory_project",
             "index_archive_semantics",
             "semantic_search_archive",
+            "find_messages",
             "index_project_memory",
             "search_project_memory",
             "get_background_rag_status",
@@ -707,3 +708,60 @@ async def test_background_status_is_admin_only(endpoint):
         ).structured_content["token"]
     async with connected(url, token=token) as client:
         assert (await client.call_tool("get_background_rag_status")).is_error
+
+
+async def test_local_first_search_enforces_identity_and_chat_scope_before_retrieval(endpoint):
+    url, manager = endpoint
+    archive = manager.archive
+    for account, chat in [(ACCOUNT_A, "123"), (ACCOUNT_A, "456"), (ACCOUNT_B, "123")]:
+        archive.configure(account, chat, "Synthetic", enabled=True, retain_deleted=False)
+        archive.ingest_page(account, chat, [{"id": "1", "text": "queue secret"}], None)
+    async with connected(url) as admin:
+        token = (
+            await admin.call_tool(
+                "create_agent_token",
+                {
+                    "label": "Scoped finder",
+                    "scopes": ["read"],
+                    "identity_ids": [ACCOUNT_A],
+                    "chat_ids": ["123"],
+                },
+            )
+        ).structured_content["token"]
+    manager.embedding_provider.model_key.reset_mock()
+    async with connected(url, token=token) as client:
+        for args in [{}, {"chat_id": "456"}, {"chat_id": "123", "account_id": ACCOUNT_B}]:
+            result = await client.call_tool(
+                "find_messages",
+                {"account_id": ACCOUNT_A, "query": "queue", "telegram": "never", **args},
+            )
+            assert result.is_error
+        manager.embedding_provider.model_key.assert_not_awaited()
+        result = await client.call_tool(
+            "find_messages",
+            {"account_id": ACCOUNT_A, "chat_id": "123", "query": "queue", "telegram": "never"},
+        )
+        assert not result.is_error
+        assert len(result.structured_content["results"]) == 1
+        assert result.structured_content["results"][0]["account_id"] == ACCOUNT_A
+    manager.users[ACCOUNT_A].history.assert_not_awaited()
+
+
+async def test_find_messages_native_cursor_continues_with_date_bounds(endpoint):
+    url, manager = endpoint
+    manager.users[ACCOUNT_A].history.return_value = {"messages": [], "next_cursor": "native"}
+    async with connected(url) as client:
+        args = {
+            "account_id": ACCOUNT_A,
+            "chat_id": "123",
+            "query": "queue",
+            "date_from": "2026-10-01",
+            "date_to": "2026-10-26",
+        }
+        found = await client.call_tool("find_messages", args)
+        assert not found.is_error
+        live = found.structured_content["telegram"]
+        assert live["next_cursor"] == "native"
+        continued = await client.call_tool(live["cursor_tool"], {**args, "cursor": "native"})
+        assert not continued.is_error
+        assert manager.users[ACCOUNT_A].history.call_args.kwargs["date_to"] == "2026-10-26"

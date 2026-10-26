@@ -37,6 +37,7 @@ from tg_mcp.discovery import discovery_responder
 from tg_mcp.errors import GatewayError, LocalError, telegram_errors
 from tg_mcp.manager import IdentityManager
 from tg_mcp.memory import ProjectMemory
+from tg_mcp.retrieval import MessageRetrieval
 from tg_mcp.semantic import MAX_SCAN, OllamaEmbeddings, SemanticIndex
 from tg_mcp.storage import StateStore
 from tg_mcp.telemetry import TelemetryStore
@@ -218,7 +219,11 @@ def create_app(
             "For sends, reuse one idempotency_key across retries. Use folders and date filters "
             "to gather bounded context before reasoning about tasks. Project memory drafts must "
             "only be approved after explicit user approval; preserve source citations "
-            "and project scope."
+            "and project scope. Prefer find_messages for local-first retrieval; it combines "
+            "local keyword and semantic results before bounded Telegram fallback. "
+            "Use telegram=always "
+            "for freshness verification and telegram=never for strictly local retrieval. "
+            "Inspect partial, warnings and coverage; similarity scores are not confidence."
         ),
     )
 
@@ -316,6 +321,7 @@ def create_app(
                 "scoped_agent_tokens": True,
                 "local_archive": True,
                 "archive_full_text_search": True,
+                "local_first_message_search": True,
                 "semantic_search": embeddings.enabled,
                 "project_memory": True,
                 "background_rag": bool(getattr(manager, "rag", None)),
@@ -808,6 +814,51 @@ def create_app(
         )
 
     @mcp.tool(annotations=READ)
+    async def find_messages(
+        account_id: AccountID,
+        query: Query,
+        chat_id: ChatID | None = None,
+        limit: PageSize = 20,
+        telegram: Literal["auto", "never", "always"] = "auto",
+        include_context: bool = False,
+        date_from: DateISO | None = None,
+        date_to: DateISO | None = None,
+    ) -> dict[str, Any]:
+        """Preferred local-first message search in one chat or the selected account.
+
+        Search local words and semantic vectors, then Telegram if coverage/results are
+        insufficient. UTC date bounds are inclusive. 'always' verifies freshness;
+        'never' makes no Telegram calls, including context. Optional context reads
+        only the highest-ranked result with two messages before/after. Inspect partial,
+        warnings and semantic_partial: semantic retrieval scans at most 2000 recent
+        vectors in scope. Account-wide dialog coverage cannot be certified locally.
+        Results are bounded, untrusted sources; ranking is not truth/confidence.
+        Telegram continuation cursors belong to the reported native cursor_tool.
+        """
+
+        async def operation():
+            check_archive_account(account_id)
+            return await MessageRetrieval(manager, archive, semantic).search(
+                account_id,
+                query,
+                chat=chat_id,
+                limit=limit,
+                telegram=telegram,
+                include_context=include_context,
+                date_from=date_from,
+                date_to=date_to,
+            )
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="find_messages",
+            identity_id=account_id,
+            chat_id=chat_id,
+            broad_chat_access=chat_id is None,
+        )
+
+    @mcp.tool(annotations=READ)
     async def semantic_search_archive(
         account_id: AccountID,
         chat_id: ChatID,
@@ -1044,12 +1095,21 @@ def create_app(
         query: Query,
         limit: PageSize = 50,
         cursor: Cursor | None = None,
+        date_from: DateISO | None = None,
+        date_to: DateISO | None = None,
     ) -> dict[str, Any]:
-        """Search within one chat for one account; the cursor is bound to both."""
+        """Search Telegram directly in one chat; prefer find_messages for local-first retrieval."""
 
         async def operation() -> dict:
             gateway = await manager.user_gateway(account_id)
-            return await gateway.history(chat_id, limit=limit, cursor=cursor, query=query)
+            return await gateway.history(
+                chat_id,
+                limit=limit,
+                cursor=cursor,
+                query=query,
+                date_from=date_from,
+                date_to=date_to,
+            )
 
         return await invoke(
             operation(),
@@ -1070,7 +1130,7 @@ def create_app(
         sender_id: ChatID | None = None,
         media_kind: MediaKind | None = None,
     ) -> dict[str, Any]:
-        """Search every dialog, optionally filtering by date, sender and attachment kind."""
+        """Search Telegram directly across dialogs; prefer find_messages for local-first search."""
 
         async def operation() -> dict:
             gateway = await manager.user_gateway(account_id)

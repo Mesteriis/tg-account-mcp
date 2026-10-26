@@ -357,7 +357,7 @@ class ArchiveStore:
     def search(
         self,
         account: str,
-        chat: str,
+        chat: str | None,
         query: str,
         *,
         limit=50,
@@ -367,14 +367,18 @@ class ArchiveStore:
         date_from=None,
         date_to=None,
     ) -> dict:
-        self.status(account, chat)
+        if chat is not None:
+            self.status(account, chat)
         # Treat input as literal words, never as FTS operators or SQL.
         terms = query.split()
         if not terms:
             raise GatewayError("invalid_request", "Search query must contain words.")
         match = " AND ".join('"' + term.replace('"', '""') + '"' for term in terms)
-        where = ["message_fts MATCH ?", "m.account=?", "m.chat=?"]
-        params = [match, account, chat]
+        where = ["message_fts MATCH ?", "m.account=?"]
+        params = [match, account]
+        if chat is not None:
+            where.append("m.chat=?")
+            params.append(chat)
         if not include_deleted:
             where.append("m.deleted_at IS NULL")
         if sender_id is not None:
@@ -400,7 +404,7 @@ class ArchiveStore:
                         **json.loads(row["snapshot"]),
                         "deleted_at": row["deleted_at"],
                         "source": "local_archive",
-                        "chat_id": chat,
+                        "chat_id": row["chat"],
                         "account_id": account,
                     }
                     for row in rows[:limit]

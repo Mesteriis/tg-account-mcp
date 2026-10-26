@@ -5,18 +5,18 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
-- Add scoped local-first message retrieval with keyword/semantic fusion, bounded Telegram
-  fallback, freshness/local-only modes, UTC date filters and explicit coverage/provenance.
-- Show server-sampled indexing/inflow rates, queue history and a net-drain ETA on the RAG page,
-  with explicit warmup, paused, growing, stale and unavailable-account states.
-- Speed up local RAG queue selection, allow fractional indexing pauses, and embed posts up to
-  8192 characters without truncation; keep Telegram adaptive pacing independent.
-- Retry each account independently of other accounts’ long-running history passes.
-- Add a RAG dashboard page with history coverage, current-model text queue, errors and account pacing.
-- Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,
-  and gradually recover after two hours of active successful loading (archive schema 4).
+## [0.8.0] - 2026-10-26
 
 ### Added
+
+- Continuous S3 attachment archival with resumable downloads, durable upload intents,
+  integrity checks and shared adaptive Telegram pacing. Private chats capture all supported
+  types; groups/channels have independent text/file defaults and per-chat overrides (schema 5).
+- RAG monitoring workspace with account/type/state facets, search, sorting, pagination and
+  inline rule editing; move default rules into Settings and preserve drafts during polling.
+- Per-chat unique uploaded object counts, pending/error jobs and retry diagnostics.
+- Fictional-data dashboard and settings screenshots in English and Russian documentation.
+- Codex plugin 0.4.0 pins its discovery bridge to tg-account-mcp 0.8.0.
 
 - Opt-in background RAG for all current/future ready user accounts, including groups/channels.
   Add immediate event discovery, fair automatic indexing, persistent reconnect head checkpoints,
@@ -33,6 +33,25 @@ contain breaking changes documented here.
   Archive tools enforce account/chat token scopes; configuration and cleanup require admin.
   Deleted text is retained only when explicitly enabled. Account deletion purges its archive.
 
+### Changed
+
+- Queue archive discovery fairly and keep attachment transfers independent of slow history scans.
+- Add filtered/sorted pagination over the activity panel's most recent 100 retained operations.
+- This release also includes the trusted-LAN opt-in described under 0.7.1 below; that version
+  was not published to GitHub Releases or PyPI.
+
+### Improved
+
+- Add scoped local-first message retrieval with keyword/semantic fusion, bounded Telegram
+  fallback, freshness/local-only modes, UTC date filters and explicit coverage/provenance.
+- Show server-sampled indexing/inflow rates, queue history and a net-drain ETA on the RAG page,
+  with explicit warmup, paused, growing, stale and unavailable-account states.
+- Speed up local RAG queue selection, allow fractional indexing pauses, and embed posts up to
+  8192 characters without truncation; keep Telegram adaptive pacing independent.
+- Retry each account independently of other accounts’ long-running history passes.
+- Add a RAG dashboard page with history coverage, current-model text queue, errors and account pacing.
+- Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,
+  and gradually recover after two hours of active successful loading (archive schema 4).
 
 ## [0.7.1] - 2026-10-18
 

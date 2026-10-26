@@ -852,7 +852,7 @@ wheels = [
 
 [[package]]
 name = "tg-account-mcp"
-version = "0.7.1"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },

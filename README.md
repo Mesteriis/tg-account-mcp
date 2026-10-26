@@ -41,10 +41,28 @@ endorsed by Telegram.
 - Scoped agent tokens with `read`, `send`, and `admin` permissions plus identity/chat allowlists.
 - A private operations dashboard that records metadata without message text, queries, passwords,
   or tokens.
+- Continuous local semantic indexing and project memory with a configurable embedding provider.
+- Separate text RAG and S3 attachment rules, with group/channel defaults and per-chat overrides.
+- Queue speed, backlog and ETA monitoring, plus searchable, filtered and paginated chat tables.
 - Docker Compose deployment with Caddy-managed HTTPS.
 
-The current release exposes 44 MCP tools. See the [tool catalog](docs/tools.md) for the full
-list and behavior notes.
+See the [tool catalog](docs/tools.md) for MCP tools and behavior notes, including
+[project memory](docs/project-memory.md) and [local archives](docs/archive.md).
+
+## Dashboard preview
+
+These are browser captures of the working dashboard with **fictional accounts, chats,
+identifiers and statistics**. They contain no real Telegram messages or deployment secrets;
+the numbers illustrate the interface, not measured performance.
+
+![RAG queue monitoring, chat filters, pagination and an inline rule editor with fictional data](docs/design/monitoring-desktop.png)
+
+Default storage rules are managed separately from per-chat overrides:
+
+![Settings for default RAG and S3 rules with fictional data](docs/design/monitoring-settings.png)
+
+[Mobile view](docs/design/monitoring-mobile.png) ·
+[Mobile rule editor](docs/design/monitoring-mobile-editor.png)
 
 ## Requirements
 
@@ -297,8 +315,8 @@ tokens must supply an allowed `chat_id`; account-wide retrieval is rejected befo
 ### Continuous text and S3 ingestion
 
 Private chats always enable text RAG and every supported attachment type. Group and
-channel defaults keep text RAG enabled and S3 disabled; set their rules on the RAG
-page or with admin `set_ingestion_policy`. A discovered chat can override its type's
+channel defaults keep text RAG enabled and S3 disabled. Set defaults under Settings →
+RAG and S3, per-chat rules on the RAG page, or use admin `set_ingestion_policy`. A discovered chat can override its type's
 rule or inherit it again. `get_ingestion_policy` reads one chat's effective rule.
 Global changes require an admin token unrestricted by identity or chat. Explicitly
 paused archives, excluded chats and disabled accounts remain paused.
@@ -345,3 +363,16 @@ The activity table supports filters, sorting and pagination within the most rece
 History coverage uses known states rather than an estimated total-Telegram percentage.
 Per-chat S3 counts show unique uploaded objects and pending/error jobs, without file
 names or object keys.
+
+The queue strip shows the embedding rate, net incoming text rate, saved-text backlog
+and an ETA based on the queue's net drain rate. The graph tracks the saved-text queue;
+its estimate excludes Telegram history that has not yet been downloaded. When the
+queue grows or stops draining, the panel shows that state instead of a completion time.
+Expanded diagnostics include account pacing and history coverage. Attachment errors
+are reported separately with retry status; a complete text queue does not mean every
+file is uploaded. Telegram history reads and attachment downloads retain their shared
+adaptive intervals independently of local embedding throughput.
+
+If the status API becomes unavailable, the panel keeps the last displayed data and
+marks it stale. Failed rule saves preserve the draft for retry; unsaved edits block
+filter/page changes until saved or cancelled. Turning a rule off keeps existing data.

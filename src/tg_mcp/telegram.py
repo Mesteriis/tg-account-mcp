@@ -1450,7 +1450,8 @@ class UserGateway:
     async def discover_archives(self) -> int:
         if self.archive is None:
             raise GatewayError("unavailable", "Archive storage is unavailable.")
-        async with self.loading.request() as interval:
+        # Join the fair gate: continuous history/media work must not starve discovery.
+        async with self.loading.request(wait=True) as interval:
             discovered = 0
             with telegram_errors():
                 await self._authorized()

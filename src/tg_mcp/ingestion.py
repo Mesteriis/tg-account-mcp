@@ -291,8 +291,27 @@ class IngestionStore:
             files = db.execute(
                 "SELECT count(DISTINCT object_key) FROM media_jobs WHERE status='uploaded'"
             ).fetchone()[0]
+            media_counts = {
+                (r["account"], r["chat"]): dict(r)
+                for r in db.execute(
+                    "SELECT account,chat,"
+                    "count(DISTINCT CASE WHEN status='uploaded' THEN object_key END) "
+                    "media_uploaded,"
+                    "sum(CASE WHEN status IN ('pending','downloading','error') "
+                    "THEN 1 ELSE 0 END) media_pending,"
+                    "sum(CASE WHEN status='error' THEN 1 ELSE 0 END) media_errors "
+                    "FROM media_jobs GROUP BY account,chat"
+                ).fetchall()
+            }
             chats = [
-                {**dict(r), **self.effective(db, r["kind"], r["account"], r["chat"])}
+                {
+                    **dict(r),
+                    **self.effective(db, r["kind"], r["account"], r["chat"]),
+                    **{
+                        key: media_counts.get((r["account"], r["chat"]), {}).get(key, 0)
+                        for key in ("media_uploaded", "media_pending", "media_errors")
+                    },
+                }
                 for r in db.execute(
                     "SELECT account,chat,title,kind,enabled FROM chats ORDER BY account,title"
                 ).fetchall()

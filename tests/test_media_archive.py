@@ -258,3 +258,19 @@ def test_s3_settings_require_private_endpoint_complete_credentials_and_backgroun
         with pytest.raises(ValidationError) as failure:
             Settings(**{**kwargs, **extra})
         assert "private-synthetic-secret" not in str(failure.value)
+
+
+def test_chat_status_counts_unique_objects_and_retains_separate_queues(archive):
+    q = archive.ingestion
+    archive.ingest_page(A, "123", [message(), message("2"), message("3")], None)
+    with archive.connect() as db:
+        jobs = db.execute("SELECT id FROM media_jobs ORDER BY mid").fetchall()
+    for job in jobs[:2]:
+        q.update_job(job["id"], status="uploaded", object_key="telegram/same-file")
+    q.update_job(jobs[2]["id"], status="error", error="synthetic")
+    status = q.status()
+    c = next(c for c in status["chats"] if c["chat"] == "123")
+    assert c["media_uploaded"] == 1 and c["media_pending"] == 1 and c["media_errors"] == 1
+    other = next(c for c in status["chats"] if c["chat"] == "-1001")
+    assert other["media_uploaded"] == other["media_pending"] == other["media_errors"] == 0
+    assert "object_key" not in c and "descriptor" not in c

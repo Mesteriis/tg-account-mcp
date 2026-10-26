@@ -96,6 +96,7 @@ def setup_routes(manager, telemetry) -> list[Route]:
         allowed = {
             "app.css",
             "app.js",
+            "table-state.js",
             "icons.css",
             "phosphor.woff2",
             "inter-cyrillic.woff2",

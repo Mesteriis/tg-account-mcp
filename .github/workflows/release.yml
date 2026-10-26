@@ -23,6 +23,7 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
+      - run: node --test tests/ui-table-state.test.cjs
       - name: Verify tag matches package version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |

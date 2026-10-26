@@ -1,8 +1,9 @@
+import asyncio
 import os
 import stat
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -224,3 +225,26 @@ def test_unknown_schema_is_rejected(archive, tmp_path):
         db.execute("PRAGMA user_version=99")
     with pytest.raises(GatewayError, match="archive_version"):
         ArchiveStore(StateStore(tmp_path))
+
+
+async def test_discovery_waits_for_busy_gate_and_resolves_legacy_kind(archive):
+    archive.discover(A, "-1001", "Synthetic group", is_channel=True)
+    assert archive.status(A, "-1001")["kind"] == "unknown"
+
+    async def dialogs():
+        yield SimpleNamespace(id=-1001, name="Synthetic group", is_channel=True, is_group=True)
+
+    client = SimpleNamespace(
+        is_user_authorized=AsyncMock(return_value=True), iter_dialogs=Mock(return_value=dialogs())
+    )
+    gateway = UserGateway(client, "t" * 43, A, archive=archive)
+    gateway.loading.sleep = AsyncMock()
+    await gateway.loading.lock.acquire()
+    task = asyncio.create_task(gateway.discover_archives())
+    try:
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        gateway.loading.lock.release()
+    await asyncio.wait_for(task, 1)
+    assert archive.status(A, "-1001")["kind"] == "group"

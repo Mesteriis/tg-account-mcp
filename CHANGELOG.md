@@ -53,6 +53,11 @@ contain breaking changes documented here.
 - Adapt background Telegram reads per account after FloodWait, persist cooldowns across restarts,
   and gradually recover after two hours of active successful loading (archive schema 4).
 
+### Security
+
+- Update locked certifi to 2026.10.23 and opentelemetry-api to 1.45.1, resolving the
+  two open dependency advisories reported before this release.
+
 ## [0.7.1] - 2026-10-18
 
 ### Added

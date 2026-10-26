@@ -25,7 +25,7 @@ class ArchiveStore:
         self.capture_failed = False
         with self.connect() as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2, 3, 4):
+            if version not in (0, 1, 2, 3, 4, 5):
                 raise GatewayError("archive_version", "Unsupported archive schema version.")
             db.executescript("""
                 CREATE TABLE IF NOT EXISTS chats (
@@ -62,7 +62,22 @@ class ArchiveStore:
             from tg_mcp.loading import SCHEMA
 
             db.executescript(SCHEMA)
-            db.execute("PRAGMA user_version=4")
+            from tg_mcp.ingestion import SCHEMA as INGESTION_SCHEMA
+            from tg_mcp.ingestion import IngestionStore
+
+            columns = {r[1] for r in db.execute("PRAGMA table_info(chats)")}
+            for name, declaration in [
+                ("kind", "TEXT NOT NULL DEFAULT 'unknown'"),
+                ("rag_enabled", "INTEGER NOT NULL DEFAULT 1"),
+                ("media_enabled", "INTEGER NOT NULL DEFAULT 0"),
+            ]:
+                if name not in columns:
+                    db.execute(f"ALTER TABLE chats ADD COLUMN {name} {declaration}")
+            db.executescript(INGESTION_SCHEMA)
+            self.ingestion = IngestionStore(self)
+            for row in db.execute("SELECT account,chat FROM chats").fetchall():
+                self.ingestion.apply_chat(db, row["account"], row["chat"], reset=False)
+            db.execute("PRAGMA user_version=5")
 
     @contextmanager
     def connect(self):
@@ -108,9 +123,12 @@ class ArchiveStore:
                     (account, chat),
                 ).fetchall():
                     self._erase(db, account, chat, row["mid"], row["rowid"])
+            self.ingestion.apply_chat(db, account, chat)
         return self.status(account, chat)
 
-    def discover(self, account: str, chat: str, title: str, is_channel: bool) -> bool:
+    def discover(
+        self, account: str, chat: str, title: str, is_channel: bool, *, chat_kind=None
+    ) -> bool:
         """Register an automatically discovered chat without overriding explicit exclusions."""
         with self.connect() as db:
             if db.execute(
@@ -127,6 +145,7 @@ class ArchiveStore:
                 "is_channel=excluded.is_channel",
                 (account, chat, title, is_channel),
             )
+            self.ingestion.apply_chat(db, account, chat, chat_kind)
             return existed is None
 
     def head_progress(self, account: str, chat: str) -> dict:
@@ -212,6 +231,9 @@ class ArchiveStore:
                 "chat_id": chat,
                 "title": row["title"],
                 "enabled": bool(row["enabled"]),
+                "kind": row["kind"],
+                "rag_enabled": bool(row["rag_enabled"]),
+                "media_enabled": bool(row["media_enabled"]),
                 "is_channel": bool(row["is_channel"]),
                 "retain_deleted": bool(row["retain_deleted"]),
                 "backfill_complete": bool(row["backfill_complete"]),
@@ -226,6 +248,10 @@ class ArchiveStore:
 
     @staticmethod
     def _erase(db, account, chat, mid, rowid):
+        db.execute(
+            "DELETE FROM media_jobs WHERE account=? AND chat=? AND mid=?", (account, chat, mid)
+        )
+        db.execute("INSERT OR IGNORE INTO media_tombstones VALUES(?,?,?)", (account, chat, mid))
         db.execute("DELETE FROM message_fts WHERE rowid=?", (rowid,))
         db.execute(
             "DELETE FROM versions WHERE account=? AND chat=? AND mid=?", (account, chat, mid)
@@ -246,6 +272,12 @@ class ArchiveStore:
         ).fetchone()
         # Backfill must never resurrect a tombstone or replace a newer live edit.
         if old and (old["deleted_at"] or old["source_date"] > source_date):
+            return
+        self.ingestion.enqueue(db, account, chat, message)
+        config = db.execute(
+            "SELECT rag_enabled FROM chats WHERE account=? AND chat=?", (account, chat)
+        ).fetchone()
+        if config is None or not config["rag_enabled"]:
             return
         if old and old["snapshot"] == snapshot:
             return
@@ -306,6 +338,7 @@ class ArchiveStore:
                     self._put(db, account, chat, payload["message"])
             else:
                 for mid in payload["message_ids"]:
+                    self.ingestion.delete_message(db, account, mid, chat)
                     if chat is None:
                         # Without a peer Telegram IDs refer only to private/basic-group messages.
                         rows = db.execute(
@@ -334,7 +367,8 @@ class ArchiveStore:
                             "SELECT rowid FROM messages WHERE account=? AND chat=? AND mid=?",
                             (account, chat, mid),
                         ).fetchone()
-                        self._erase(db, account, chat, mid, tombstone[0])
+                        if tombstone is not None:
+                            self._erase(db, account, chat, mid, tombstone[0])
                     for row in rows:
                         if row["retain_deleted"]:
                             db.execute(
@@ -484,4 +518,10 @@ class ArchiveStore:
             if chat is None:
                 db.execute("DELETE FROM projects WHERE account=?", (account,))
                 db.execute("DELETE FROM rag_loading WHERE account=?", (account,))
-        return {"account_id": account, "chat_id": chat, "purged": True}
+            pending = db.execute("SELECT count(*) FROM media_deletions").fetchone()[0]
+        return {
+            "account_id": account,
+            "chat_id": chat,
+            "purged": True,
+            "media_cleanup_pending": pending,
+        }

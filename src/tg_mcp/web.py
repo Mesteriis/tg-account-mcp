@@ -4,7 +4,7 @@
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.requests import Request
@@ -13,6 +13,7 @@ from starlette.routing import Route
 
 from tg_mcp import __version__
 from tg_mcp.errors import GatewayError, LocalError
+from tg_mcp.ingestion import CONTENT_TYPES
 
 SECURITY_HEADERS = {
     "Cache-Control": "no-store",
@@ -56,6 +57,17 @@ class PatchBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     label: str | None = Field(default=None, min_length=1, max_length=64)
     enabled: bool | None = None
+
+
+class IngestionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["private", "group", "channel"]
+    rag_enabled: bool
+    s3_enabled: bool
+    content_types: list[str] = Field(max_length=len(CONTENT_TYPES))
+    account: str = Field(default="", pattern=r"^(?:acct_[a-z2-7]{16})?$")
+    chat: str = Field(default="", pattern=r"^(?:-?[1-9][0-9]{0,18})?$")
+    inherit: bool = False
 
 
 def _json(data: Any, status: int = 200) -> JSONResponse:
@@ -103,8 +115,23 @@ def setup_routes(manager, telemetry) -> list[Route]:
             rag = worker.status(details=True) if worker else {"enabled": False}
         except (OSError, sqlite3.Error, LocalError, GatewayError):
             rag = {"enabled": bool(worker), "status_error": "status_unavailable"}
+        media_worker = getattr(manager, "media", None)
+        archive = getattr(manager, "archive", None)
+        try:
+            media = (
+                media_worker.status()
+                if media_worker
+                else {
+                    "configured": False,
+                    "running": False,
+                    **(archive.ingestion.status() if archive else {}),
+                }
+            )
+        except (OSError, sqlite3.Error, LocalError, GatewayError):
+            media = {"status_error": "status_unavailable"}
         return _json(
             {
+                "media": media,
                 "rag": rag,
                 "version": __version__,
                 "summary": manager.status(),
@@ -113,6 +140,14 @@ def setup_routes(manager, telemetry) -> list[Route]:
                 "analytics": telemetry.snapshot(days=30),
             }
         )
+
+    async def ingestion_policy(request: Request) -> Response:
+        try:
+            body = await _body(request, IngestionBody)
+            result = manager.archive.ingestion.set_policy(**body.model_dump())
+            return _json(result)
+        except GatewayError as exc:
+            return _json({"error": exc.as_dict()}, 400)
 
     async def accounts(request: Request) -> Response:
         try:
@@ -184,6 +219,7 @@ def setup_routes(manager, telemetry) -> list[Route]:
         Route("/", page, methods=["GET"]),
         Route("/assets/{name:str}", asset, methods=["GET"]),
         Route("/setup/api/status", status, methods=["GET"]),
+        Route("/setup/api/ingestion-policy", ingestion_policy, methods=["POST"]),
         Route("/setup/api/accounts", accounts, methods=["POST"]),
         Route("/setup/api/accounts/{account_id:str}/login", account_login, methods=["POST"]),
         Route(

@@ -35,6 +35,7 @@ from tg_mcp.config import Settings
 from tg_mcp.cursors import Cursors, query_context
 from tg_mcp.discovery import discovery_responder
 from tg_mcp.errors import GatewayError, LocalError, telegram_errors
+from tg_mcp.ingestion import CONTENT_TYPES
 from tg_mcp.manager import IdentityManager
 from tg_mcp.memory import ProjectMemory
 from tg_mcp.retrieval import MessageRetrieval
@@ -447,6 +448,66 @@ def create_app(
             identity_id=account_id,
             chat_id=chat_id,
             required_scope="admin",
+        )
+
+    @mcp.tool(annotations=READ)
+    async def get_ingestion_policy(account_id: AccountID, chat_id: ChatID) -> dict[str, Any]:
+        """Read the effective text RAG and S3 file rules for one discovered chat."""
+
+        async def operation():
+            check_archive_account(account_id)
+            chat = archive.status(account_id, chat_id)
+            return archive.ingestion.policy(chat["kind"], account_id, chat_id)
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="get_ingestion_policy",
+            identity_id=account_id,
+            chat_id=chat_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def set_ingestion_policy(
+        kind: Literal["private", "group", "channel"],
+        rag_enabled: bool,
+        s3_enabled: bool,
+        content_types: Annotated[list[str], Field(max_length=len(CONTENT_TYPES))],
+        account_id: AccountID | None = None,
+        chat_id: ChatID | None = None,
+        inherit: bool = False,
+    ) -> dict[str, Any]:
+        """Set global group/channel rules or override one chat (admin).
+
+        Text RAG and S3 binary files are separate. Private chats always enable both
+        and all file types. inherit removes the override. This does not erase data.
+        """
+
+        async def operation():
+            if account_id is None and current_access.get().identity_ids is not None:
+                raise GatewayError("forbidden", "Global rules require access to all identities.")
+            if bool(account_id) != bool(chat_id):
+                raise GatewayError("invalid_request", "Provide both account and chat, or neither.")
+            if account_id:
+                check_archive_account(account_id)
+            return archive.ingestion.set_policy(
+                kind,
+                rag_enabled,
+                s3_enabled,
+                content_types,
+                account=account_id or "",
+                chat=chat_id or "",
+                inherit=inherit,
+            )
+
+        return await invoke(
+            operation(),
+            telemetry=telemetry,
+            operation_name="set_ingestion_policy",
+            identity_id=account_id,
+            chat_id=chat_id,
+            required_scope="admin",
+            broad_chat_access=chat_id is None,
         )
 
     @mcp.tool(annotations=READ)

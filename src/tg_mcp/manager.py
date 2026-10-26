@@ -25,6 +25,7 @@ from tg_mcp.bot import BotGateway
 from tg_mcp.config import Credentials, Settings
 from tg_mcp.errors import GatewayError, LocalError
 from tg_mcp.identities import AccountRecord, BotRecord, IdentityCatalog
+from tg_mcp.media_archive import MediaArchive
 from tg_mcp.storage import StateStore
 from tg_mcp.telegram import UserGateway, make_client
 
@@ -63,6 +64,7 @@ class IdentityManager:
         self._archive_task: asyncio.Task | None = None
         self._archive_workers: dict[str, asyncio.Task] = {}
         self.rag = BackgroundRAG(self, settings) if settings and settings.background_rag else None
+        self.media = MediaArchive(self, settings) if settings and settings.s3_endpoint else None
         self.credentials = credentials
         self.http = http
         self.catalog = IdentityCatalog.load(store, credentials)
@@ -90,6 +92,8 @@ class IdentityManager:
         self._archive_task = asyncio.create_task(self._archive_loop())
         if self.rag:
             self.rag.start()
+        if self.media:
+            self.media.start()
 
     async def _archive_loop(self) -> None:
         while True:
@@ -104,7 +108,8 @@ class IdentityManager:
     async def _sync_archives(self) -> int:
         accounts = defaultdict(list)
         for chat in self.archive.configured():
-            accounts[chat["account"]].append(chat)
+            if chat["rag_enabled"] or chat["media_enabled"]:
+                accounts[chat["account"]].append(chat)
 
         async def sync_account(chats):
             for chat in chats:
@@ -150,6 +155,8 @@ class IdentityManager:
         return 60
 
     async def close(self) -> None:
+        if self.media:
+            await self.media.close()
         if self.rag:
             await self.rag.close()
         if self._archive_task:

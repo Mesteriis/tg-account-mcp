@@ -482,6 +482,8 @@ def test_message_includes_attachment_metadata():
     result = UserGateway._message(attached)
 
     assert result["attachment"] == {
+        "kind": "document",
+        "media_id": "",
         "file_name": "photo.jpg",
         "mime_type": "image/jpeg",
         "size": 123,
@@ -713,3 +715,40 @@ async def test_corrupt_cursor_never_reaches_telegram():
     with pytest.raises(GatewayError, match="invalid_cursor"):
         await gateway.history("123", cursor="not-a-valid-token")
     client.iter_messages.assert_not_called()
+
+
+async def test_archive_media_filters_before_download_and_closes_iterator(tmp_path):
+    client, gateway = user()
+    attached = message(9)
+    attached.media = object()
+    attached.file = SimpleNamespace(
+        size=3, name="fixture.bin", mime_type="application/octet-stream"
+    )
+    client.get_messages.return_value = attached
+    from tg_mcp.archive import ArchiveStore
+    from tg_mcp.loading import AdaptiveLoading
+    from tg_mcp.storage import StateStore
+
+    gateway.loading = AdaptiveLoading(
+        ArchiveStore(StateStore(tmp_path)), "acct_aaaaaaaaaaaaaaaa", sleep=AsyncMock()
+    )
+    descriptor = UserGateway._message(attached)["attachment"]
+    assert (await gateway.archive_media_part("123", "9", 0, ["photo"], descriptor))["skipped"]
+    client.iter_download.assert_not_called()
+
+    class Download:
+        wait_time = 0
+
+        def __aiter__(self):
+            return items([b"abc"])
+
+        close = AsyncMock()
+
+    download = Download()
+    client.iter_download.return_value = download
+    # Avoid wall-clock waits; this still exercises the gateway's adaptive loading gate.
+    gateway.loading.sleep = AsyncMock()
+    result = await gateway.archive_media_part("123", "9", 0, ["document"], descriptor)
+    assert result["data"] == b"abc" and result["complete"]
+    download.close.assert_awaited_once()
+    assert download.wait_time == 2

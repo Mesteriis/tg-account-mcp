@@ -199,3 +199,28 @@ async def test_rag_status_failure_does_not_break_account_dashboard(tmp_path):
     assert result["rag"]["status_error"] == "status_unavailable"
     assert result["accounts"][0]["account_id"] == ACCOUNT
     assert "Safe diagnostic" not in str(result)
+
+
+async def test_ingestion_rules_validate_and_preserve_private_policy(tmp_path):
+    application, manager = app(tmp_path, host="0.0.0.0")
+    from tg_mcp.archive import ArchiveStore
+    from tg_mcp.storage import StateStore
+
+    manager.archive = ArchiveStore(StateStore(tmp_path))
+    manager.archive.configure(ACCOUNT, "123", "Synthetic", enabled=True, retain_deleted=False)
+    transport = httpx.ASGITransport(application)
+    async with httpx.AsyncClient(transport=transport, base_url="https://mcp.test") as client:
+        payload = dict(kind="group", rag_enabled=False, s3_enabled=True, content_types=["photo"])
+        response = await client.post("/setup/api/ingestion-policy", json=payload)
+        assert response.status_code == 200
+        assert response.json()["content_types"] == ["photo"]
+        for invalid in [
+            dict(payload, kind="private"),
+            dict(payload, account=ACCOUNT, chat="123"),
+            dict(payload, content_types=["malware"]),
+            dict(payload, rag_enabled="false"),
+        ]:
+            response = await client.post("/setup/api/ingestion-policy", json=invalid)
+            assert response.status_code == 400
+        response = await client.get("/setup/api/status")
+        assert response.json()["media"]["defaults"]["private"]["s3_enabled"]

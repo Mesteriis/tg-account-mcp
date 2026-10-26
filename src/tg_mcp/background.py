@@ -80,7 +80,8 @@ class BackgroundRAG:
         ready = self.ready_accounts()
         with self.archive.connect() as db:
             chats = db.execute(
-                "SELECT c.account,c.chat FROM chats c WHERE c.enabled=1 AND EXISTS "
+                "SELECT c.account,c.chat FROM chats c WHERE c.enabled=1 AND c.rag_enabled=1 "
+                "AND EXISTS "
                 "(SELECT 1 FROM messages m WHERE m.account=c.account AND m.chat=c.chat "
                 "AND m.deleted_at IS NULL AND trim(m.text,?)!='' AND NOT EXISTS "
                 "(SELECT 1 FROM message_vectors v WHERE v.message=m.rowid AND v.model=?))",
@@ -160,12 +161,15 @@ class BackgroundRAG:
         if self.model_key is None:
             return
         with self.archive.connect() as db:
-            chats = db.execute("SELECT account,chat FROM chats WHERE enabled=1").fetchall()
+            chats = db.execute(
+                "SELECT account,chat FROM chats WHERE enabled=1 AND rag_enabled=1"
+            ).fetchall()
             row = db.execute(
                 "SELECT count(*) AS eligible,coalesce(sum(EXISTS "
                 "(SELECT 1 FROM message_vectors v WHERE v.message=m.rowid AND v.model=?)),0) "
                 "AS indexed FROM messages m JOIN chats c USING(account,chat) "
-                "WHERE c.enabled=1 AND m.deleted_at IS NULL AND trim(m.text,?)!=''",
+                "WHERE c.enabled=1 AND c.rag_enabled=1 "
+                "AND m.deleted_at IS NULL AND trim(m.text,?)!=''",
                 (self.model_key, WHITESPACE),
             ).fetchone()
         scope = self.metrics_scope(chats)
@@ -191,14 +195,15 @@ class BackgroundRAG:
     def status(self, *, details=False):
         with self.archive.connect() as db:
             rows = db.execute(
-                "SELECT c.account,c.chat,c.title,c.backfill_complete,c.last_sync,c.error,"
+                "SELECT c.account,c.chat,c.title,c.backfill_complete,c.last_sync,c.error, "
+                "c.kind,c.rag_enabled,c.media_enabled,"
                 "count(m.rowid) AS archived,"
                 "sum(CASE WHEN trim(m.text,?)!='' THEN 1 ELSE 0 END) AS eligible,"
                 "sum(CASE WHEN trim(m.text,?)!='' AND v.message IS NOT NULL "
                 "THEN 1 ELSE 0 END) AS indexed "
                 "FROM chats c LEFT JOIN messages m ON m.account=c.account AND m.chat=c.chat "
                 "AND m.deleted_at IS NULL LEFT JOIN message_vectors v "
-                "ON v.message=m.rowid AND v.model=? WHERE c.enabled=1 "
+                "ON v.message=m.rowid AND v.model=? WHERE c.enabled=1 AND c.rag_enabled=1 "
                 "GROUP BY c.account,c.chat ORDER BY c.account,c.title,c.chat",
                 (WHITESPACE, WHITESPACE, self.model_key),
             ).fetchall()

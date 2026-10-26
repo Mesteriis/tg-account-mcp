@@ -150,4 +150,4 @@ def test_upgrade_version_one_preserves_existing_archive(state, tmp_path):
     upgraded = ArchiveStore(StateStore(tmp_path))
     assert upgraded.search(ACCOUNT, "123", "original")["messages"]
     with upgraded.connect() as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert db.execute("PRAGMA user_version").fetchone()[0] == 5

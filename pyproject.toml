@@ -28,6 +28,7 @@ dependencies = [
   "qrcode==8.2",
   "starlette>=1.6,<2",
   "uvicorn>=0.53,<1",
+  "boto3>=1.40,<2",
 ]
 
 [project.scripts]

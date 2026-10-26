@@ -1191,6 +1191,68 @@ class UserGateway:
         return message, file, size
 
     @staticmethod
+    def _media_kind(message):
+        for name, kind in [
+            ("sticker", "sticker"),
+            ("gif", "animation"),
+            ("video_note", "video_note"),
+            ("voice", "voice"),
+            ("audio", "audio"),
+            ("video", "video"),
+            ("photo", "photo"),
+        ]:
+            if getattr(message, name, None):
+                return kind
+        return "document"
+
+    async def archive_media_part(self, chat_id, mid, offset, allowed_types, expected):
+        """Read a small resumable media quantum under the shared adaptive gate."""
+        async with self.loading.request(wait=True) as interval:
+            with telegram_errors():
+                await self._authorized()
+                peer = await self.client.get_input_entity(int(chat_id))
+                message = await self.client.get_messages(peer, ids=int(mid))
+                if message is None or not message.media or not message.file:
+                    raise GatewayError("file_unavailable", "Attachment is no longer available.")
+                kind = self._media_kind(message)
+                if kind not in allowed_types:
+                    return {"skipped": True}
+                descriptor = self._message(message)["attachment"]
+                if expected.get("media_id") and expected["media_id"] != descriptor["media_id"]:
+                    raise GatewayError("source_changed", "Attachment changed during archival.")
+                if not expected.get("media_id") and (
+                    expected.get("size") != descriptor["size"]
+                    or expected.get("file_name") != descriptor["file_name"]
+                ):
+                    raise GatewayError("source_changed", "Attachment changed during archival.")
+                size = int(descriptor["size"] or 0)
+                if offset > size or offset % (512 * 1024):
+                    raise GatewayError("invalid_offset", "Restart this attachment transfer.")
+                chunks = max(1, min(4, int(20 / max(interval, 1))))
+                data = bytearray()
+                iterator = self.client.iter_download(
+                    message.media,
+                    offset=offset,
+                    request_size=512 * 1024,
+                    chunk_size=512 * 1024,
+                    limit=chunks,
+                )
+                iterator.wait_time = interval
+                try:
+                    async for chunk in iterator:
+                        data.extend(chunk)
+                finally:
+                    await iterator.close()
+                if not data and offset < size:
+                    raise GatewayError("file_unavailable", "Incomplete attachment response.")
+                return {
+                    "data": bytes(data),
+                    "descriptor": descriptor,
+                    "size": size,
+                    "complete": offset + len(data) >= size,
+                }
+
+    @staticmethod
     def _message(message, *, include_chat: bool = False) -> dict:
         file = getattr(message, "file", None)
         attachment = None
@@ -1199,6 +1261,14 @@ class UserGateway:
                 "file_name": UserGateway._file_name(file, str(message.id)),
                 "mime_type": getattr(file, "mime_type", None) or "application/octet-stream",
                 "size": getattr(file, "size", None),
+                "kind": UserGateway._media_kind(message),
+                "media_id": str(
+                    getattr(
+                        getattr(message, "photo", None) or getattr(message, "document", None),
+                        "id",
+                        "",
+                    )
+                ),
             }
         result = {
             "id": str(message.id),
@@ -1392,7 +1462,15 @@ class UserGateway:
                     if self.auto_archive is not None and not self.auto_archive():
                         break
                     discovered += self.archive.discover(
-                        self.identity_id, str(dialog.id), dialog.name or "", bool(dialog.is_channel)
+                        self.identity_id,
+                        str(dialog.id),
+                        dialog.name or "",
+                        bool(dialog.is_channel),
+                        chat_kind="private"
+                        if getattr(dialog, "is_user", False) or dialog.id > 0
+                        else "group"
+                        if getattr(dialog, "is_group", False) or not dialog.is_channel
+                        else "channel",
                     )
                     await asyncio.sleep(0)
             return discovered
@@ -1410,7 +1488,7 @@ class UserGateway:
     async def _archive_history(self, chat_id: str, cursor: str | None) -> dict:
         if self.loading is None:
             raise GatewayError("unavailable", "Archive storage is unavailable.")
-        async with self.loading.request():
+        async with self.loading.request(wait=True):
             # history asks for limit+1; 99 keeps the request within one native 100-item page.
             return await self.history(chat_id, limit=99, cursor=cursor)
 
@@ -1472,6 +1550,13 @@ class UserGateway:
                 str(event.chat_id),
                 utils.get_display_name(chat) if chat else "",
                 bool(getattr(event, "is_channel", False)),
+                chat_kind="private"
+                if event.chat_id > 0
+                else "group"
+                if getattr(event, "is_group", False)
+                else "channel"
+                if getattr(chat, "broadcast", False)
+                else None,
             )
         except (OSError, sqlite3.Error, LocalError):
             self.archive.capture_failed = True

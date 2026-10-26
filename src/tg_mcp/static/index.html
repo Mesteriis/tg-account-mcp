@@ -110,6 +110,22 @@
 
       <section class="view" data-page="rag" aria-label="Фоновая индексация RAG">
         <p id="ragState" class="rag-state" role="status">Загрузка состояния RAG…</p>
+        <article class="panel rag-progress ingestion-panel" aria-labelledby="ingestionHeading">
+          <h2 id="ingestionHeading">Правила RAG и S3</h2>
+          <p>Личные чаты: тексты всегда попадают в RAG, все типы вложений — в S3. Отключённые аккаунты и остановленные архивы не загружаются.</p>
+          <p id="mediaState" class="rag-muted" role="status">Загрузка состояния хранилища…</p>
+          <form id="ingestionForm">
+            <label class="ingestion-scope">Общее правило или чат<select id="ingestionScope" required aria-label="Общее правило или чат"></select></label>
+            <p id="ingestionOrigin" class="rag-muted"></p>
+            <fieldset id="ingestionControls"><legend>Что загружать</legend>
+              <div class="ingestion-options"><label><input id="ingestionRag" type="checkbox"> Тексты в RAG</label><label><input id="ingestionS3" type="checkbox"> Вложения в S3</label></div>
+              <p class="rag-muted">Типы вложений для S3. Распознавание изображений и расшифровка аудио не выполняются.</p>
+              <div id="ingestionTypes" class="ingestion-options"></div>
+            </fieldset>
+            <div class="ingestion-actions"><button id="ingestionSave" type="submit" class="button primary">Сохранить правило</button><button id="ingestionInherit" type="button" class="button">Использовать общее</button></div>
+            <p id="ingestionResult" class="rag-muted" role="status"></p>
+          </form>
+        </article>
         <div id="ragDetails" hidden>
           <article class="panel rag-progress">
             <h2>Загрузка истории Telegram</h2>

@@ -532,8 +532,69 @@ function renderRagThroughput(rag, stale) {
   }
 }
 
+const mediaTypeLabels = {photo:'Фото', video:'Видео', document:'Документы', audio:'Аудио', voice:'Голосовые', video_note:'Видеосообщения', sticker:'Стикеры', animation:'Анимации'};
+let ingestionDirty = false;
+let ingestionSaving = false;
+let ingestionOptionsKey = '';
+function ingestionSelection() {
+  const value = $('ingestionScope').value;
+  if (value.startsWith('global:')) return {kind:value.slice(7), ...(data?.media?.defaults?.[value.slice(7)] || {})};
+  return data?.media?.chats?.find(c => `${c.account}:${c.chat}` === value);
+}
+function loadIngestionRule() {
+  const rule = ingestionSelection();
+  const fixed = !rule || rule.kind === 'private';
+  $('ingestionControls').disabled = fixed || ingestionSaving;
+  $('ingestionSave').disabled = fixed || ingestionSaving;
+  $('ingestionInherit').disabled = fixed || !rule?.account || ingestionSaving;
+  $('ingestionOrigin').textContent = !rule ? 'Выберите правило.' : fixed ? 'Личный чат: RAG и все вложения включены постоянно.' : rule.account ? (rule.inherited ? 'Действует общее правило.' : 'Для этого чата задано своё правило.') : 'Применяется к чатам без собственного правила, включая новые.';
+  $('ingestionRag').checked = Boolean(rule?.rag_enabled);
+  $('ingestionS3').checked = Boolean(rule?.s3_enabled);
+  $('ingestionTypes').replaceChildren();
+  Object.entries(mediaTypeLabels).forEach(([type, title]) => {
+    const label = document.createElement('label');
+    const input = document.createElement('input'); input.type = 'checkbox'; input.value = type;
+    input.checked = Boolean(rule?.content_types?.includes(type));
+    label.append(input, document.createTextNode(title)); $('ingestionTypes').append(label);
+  });
+}
+function renderIngestion(stale) {
+  const media = data?.media;
+  $('mediaState').textContent = stale ? 'Нет связи с сервером. Состояние S3 могло устареть.' : media?.status_error ? 'Состояние S3 недоступно. Повторная попытка через 4 секунды.' : !media?.configured ? 'S3 не настроен. Правила сохраняются, файлы пока не выгружаются.' : `S3: ${formatNumber(media.files_uploaded || 0)} файлов сохранено · ${formatNumber((media.jobs?.pending || 0) + (media.jobs?.downloading || 0) + (media.jobs?.error || 0))} в очереди · ${formatNumber(media.jobs?.error || 0)} ошибок · ${formatNumber(media.pending_deletions || 0)} ожидают удаления${media.deletion_errors ? ' · есть ошибки удаления' : ''}${media.last_error ? ` · ${media.last_error}` : !media.running ? ' · задачи остановлены' : ''}.`;
+  const choices = [['global:group','Общее правило: группы'],['global:channel','Общее правило: каналы'], ...(media?.chats || []).map(c => [`${c.account}:${c.chat}`, `${c.title || c.chat} · ${data.accounts.find(a => a.account_id === c.account)?.label || c.account}`])];
+  const key = JSON.stringify(choices);
+  if (key !== ingestionOptionsKey && !ingestionDirty && !ingestionSaving) {
+    const selected = $('ingestionScope').value;
+    $('ingestionScope').replaceChildren(...choices.map(([value,title]) => {const option = document.createElement('option');option.value=value;option.textContent=title;return option;}));
+    if (choices.some(c => c[0] === selected)) $('ingestionScope').value = selected;
+    ingestionOptionsKey = key;
+  }
+  if (!ingestionDirty && !ingestionSaving) loadIngestionRule();
+}
+$('ingestionScope').onchange = () => {ingestionDirty = false; $('ingestionResult').textContent = ''; loadIngestionRule();};
+$('ingestionControls').onchange = () => {ingestionDirty = true;};
+async function saveIngestion(inherit) {
+  const rule = ingestionSelection(); if (!rule || rule.kind === 'private' || ingestionSaving) return;
+  ingestionSaving = true; $('ingestionSave').disabled = true; $('ingestionInherit').disabled = true; $('ingestionControls').disabled = true; $('ingestionScope').disabled = true;
+  $('ingestionResult').textContent = 'Сохраняем…';
+  try {
+    await api('/setup/api/ingestion-policy', {method:'POST', body:JSON.stringify({kind:rule.kind, account:rule.account || '', chat:rule.chat || '', rag_enabled:$('ingestionRag').checked, s3_enabled:$('ingestionS3').checked, content_types:[...$('ingestionTypes').querySelectorAll('input:checked')].map(i => i.value), inherit})});
+    ingestionDirty = false;
+    $('ingestionResult').textContent = 'Правило сохранено. Существующие данные сохраняются; новые типы вложений добавляются в очередь.';
+  } catch (error) { $('ingestionResult').textContent = `Не удалось сохранить: ${error.message}. Повторите попытку.`; }
+  finally {
+    ingestionSaving = false; $('ingestionScope').disabled = false; await refresh();
+    const current = ingestionSelection(); const fixed = !current || current.kind === 'private';
+    $('ingestionControls').disabled = fixed; $('ingestionSave').disabled = fixed;
+    $('ingestionInherit').disabled = fixed || !current?.account;
+  }
+}
+$('ingestionForm').onsubmit = (event) => {event.preventDefault(); saveIngestion(false);};
+$('ingestionInherit').onclick = () => saveIngestion(true);
+
 function renderRag(stale = ragStale) {
   ragStale = stale;
+  renderIngestion(stale);
   const rag = data?.rag;
   const state = $('ragState');
   const details = $('ragDetails');

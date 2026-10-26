@@ -71,9 +71,9 @@ class AdaptiveLoading:
             )
 
     @asynccontextmanager
-    async def request(self):
+    async def request(self, *, wait=False):
         # Discovery holds this same gate, so history never queues behind a long scan.
-        if self.lock.locked():
+        if self.lock.locked() and not wait:
             raise GatewayError("load_paused", "Background loading is already in progress.", 5)
         async with self.lock:
             state = self.state()

@@ -203,6 +203,8 @@ async def test_real_sdk_lists_tools_and_routes_explicit_ids(endpoint, mode):
             "configure_chat_archive",
             "sync_chat_archive",
             "get_archive_status",
+            "get_ingestion_policy",
+            "set_ingestion_policy",
             "search_archive",
             "get_message_versions",
             "export_chat_archive",
@@ -765,3 +767,32 @@ async def test_find_messages_native_cursor_continues_with_date_bounds(endpoint):
         continued = await client.call_tool(live["cursor_tool"], {**args, "cursor": "native"})
         assert not continued.is_error
         assert manager.users[ACCOUNT_A].history.call_args.kwargs["date_to"] == "2026-10-26"
+
+
+async def test_ingestion_policy_admin_scope_and_global_identity_boundary(endpoint):
+    url, manager = endpoint
+    manager.archive.discover(ACCOUNT_A, "-1001", "Synthetic", is_channel=True, chat_kind="group")
+    args = dict(kind="group", rag_enabled=False, s3_enabled=True, content_types=["photo"])
+    async with connected(url) as client:
+        result = await client.call_tool("set_ingestion_policy", args)
+        assert not result.is_error
+        created = await client.call_tool(
+            "create_agent_token",
+            {"label": "Scoped admin", "scopes": ["admin"], "identity_ids": [ACCOUNT_A]},
+        )
+        token = created.structured_content["token"]
+    async with connected(url, token=token) as client:
+        assert (
+            await client.call_tool("set_ingestion_policy", dict(args, content_types=["video"]))
+        ).is_error
+        assert manager.archive.ingestion.policy("group")["content_types"] == ["photo"]
+        assert not (
+            await client.call_tool(
+                "set_ingestion_policy", dict(args, account_id=ACCOUNT_A, chat_id="-1001")
+            )
+        ).is_error
+        assert (
+            await client.call_tool(
+                "get_ingestion_policy", {"account_id": ACCOUNT_B, "chat_id": "-1001"}
+            )
+        ).is_error

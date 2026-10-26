@@ -18,12 +18,16 @@ class MessageRetrieval:
                 where += " AND chat=?"
                 params.append(chat)
             rows = db.execute(
-                "SELECT enabled,backfill_complete,last_sync,error FROM chats WHERE " + where,
+                "SELECT enabled,rag_enabled,backfill_complete,last_sync,error FROM chats WHERE "
+                + where,
                 params,
             ).fetchall()
         complete = (
             bool(rows)
-            and all(r["enabled"] and r["backfill_complete"] and not r["error"] for r in rows)
+            and all(
+                r["enabled"] and r["rag_enabled"] and r["backfill_complete"] and not r["error"]
+                for r in rows
+            )
             and not self.archive.capture_failed
         )
         return {

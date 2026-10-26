@@ -61,6 +61,21 @@ class Settings(BaseModel):
     embedding_url: str | None = None
     embedding_model: str | None = Field(default=None, min_length=1, max_length=128)
     embedding_dimensions: int = Field(default=256, ge=32, le=4096)
+    s3_endpoint: str | None = None
+    s3_region: str = Field(default="garage", min_length=1, max_length=64)
+    s3_bucket: str | None = Field(default=None, pattern=r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
+    s3_prefix: str = Field(default="telegram", pattern=r"^[a-zA-Z0-9_-]{1,64}$")
+    s3_access_key: SecretStr | None = None
+    s3_secret_key: SecretStr | None = None
+
+    @model_validator(mode="after")
+    def s3_pair(self):
+        values = [self.s3_endpoint, self.s3_bucket, self.s3_access_key, self.s3_secret_key]
+        if any(values) and not all(values):
+            raise ValueError("Configure S3 endpoint, bucket and both credentials together")
+        if self.s3_endpoint and not self.background_rag:
+            raise ValueError("Automatic S3 archival requires background RAG")
+        return self
 
     @model_validator(mode="after")
     def embedding_pair(self):
@@ -70,7 +85,7 @@ class Settings(BaseModel):
             raise ValueError("Background RAG requires a local embedding provider")
         return self
 
-    @field_validator("embedding_url")
+    @field_validator("embedding_url", "s3_endpoint")
     @classmethod
     def local_embedding_url(cls, value: str | None) -> str | None:
         if value is None:
@@ -138,6 +153,12 @@ class Settings(BaseModel):
             rag_discovery_interval=int(os.environ.get("TG_MCP_RAG_DISCOVERY_INTERVAL", "300")),
             rag_index_interval=float(os.environ.get("TG_MCP_RAG_INDEX_INTERVAL", "1")),
             rag_batch_size=int(os.environ.get("TG_MCP_RAG_BATCH_SIZE", "4")),
+            s3_endpoint=os.environ.get("TG_MCP_S3_ENDPOINT") or None,
+            s3_region=os.environ.get("TG_MCP_S3_REGION", "garage"),
+            s3_bucket=os.environ.get("TG_MCP_S3_BUCKET") or None,
+            s3_prefix=os.environ.get("TG_MCP_S3_PREFIX", "telegram"),
+            s3_access_key=os.environ.get("TG_MCP_S3_ACCESS_KEY") or None,
+            s3_secret_key=os.environ.get("TG_MCP_S3_SECRET_KEY") or None,
             embedding_url=os.environ.get("TG_MCP_EMBEDDING_URL") or None,
             embedding_model=os.environ.get("TG_MCP_EMBEDDING_MODEL") or None,
             embedding_dimensions=int(os.environ.get("TG_MCP_EMBEDDING_DIMENSIONS", "256")),

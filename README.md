@@ -292,3 +292,40 @@ Fallback/context reads share the account's adaptive loading gate. Telegram failu
 or timeouts preserve local results with explicit warnings. No deleted content is returned and
 no source is automatically enabled, archived or reindexed by a retrieval request. Chat-restricted
 tokens must supply an allowed `chat_id`; account-wide retrieval is rejected before any reads.
+
+### Continuous text and S3 ingestion
+
+Private chats always enable text RAG and every supported attachment type. Group and
+channel defaults keep text RAG enabled and S3 disabled; set their rules on the RAG
+page or with admin `set_ingestion_policy`. A discovered chat can override its type's
+rule or inherit it again. `get_ingestion_policy` reads one chat's effective rule.
+Global changes require an admin token unrestricted by identity or chat. Explicitly
+paused archives, excluded chats and disabled accounts remain paused.
+
+RAG text and S3 files are separate switches. S3 types are `photo`, `video`,
+`document`, `audio`, `voice`, `video_note`, `sticker`, `animation`. Captions can enter
+text RAG; files are stored as original binary objects, without OCR or transcription.
+Disabling a rule stops future ingestion and keeps existing data. Re-enabling text
+RAG restarts history coverage; enabling S3 seeds existing saved attachment metadata.
+New live messages enqueue immediately; transfers are asynchronous, newest first,
+with fair turns between ready accounts. Telegram discovery still runs every configured
+interval. Downloads share the persistent adaptive Telegram gate with history reads;
+FloodWait pauses and increased intervals apply to both. Semantic embeddings remain local.
+
+Configure a private S3-compatible endpoint using `TG_MCP_S3_ENDPOINT`,
+`TG_MCP_S3_REGION` (default `garage`), `TG_MCP_S3_BUCKET`, `TG_MCP_S3_PREFIX`
+(default `telegram`), `TG_MCP_S3_ACCESS_KEY` and `TG_MCP_S3_SECRET_KEY`.
+Supply endpoint, bucket and both credentials together in a private environment file;
+S3 requires background RAG and its local embedding provider. The endpoint must be
+loopback/private network; public endpoints and environment proxies are not used.
+Provision the bucket and scoped credentials separately; never commit them.
+
+The worker keeps a private resumable spool, durable upload intents and idempotent
+object keys, checks object length and SHA-256 metadata after upload, and reserves
+5 GiB of local free space. Telegram files that disappeared before download are
+reported as skipped. Dashboard status reports queued, saved, failed and pending
+S3 deletion counts without file names or credentials. Purging an archive schedules
+object deletion; `media_cleanup_pending` reports this asynchronous cleanup queue.
+Telegram deletion retention follows the chat's existing `retain_deleted` setting.
+Back up the SQLite archive, spool, credentials and S3 service data together; an
+S3 service on the same machine is storage, not an independent backup.

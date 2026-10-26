@@ -177,14 +177,12 @@ class SemanticIndex:
     @staticmethod
     def _scope(kind: str, account: str, target: str):
         if kind == "archive":
-            return (
-                "messages",
-                "message_vectors",
-                "message",
-                "snapshot",
-                "account=? AND chat=? AND deleted_at IS NULL AND trim(text,?)!=''",
-                [account, target, WHITESPACE],
-            )
+            where = "account=? AND deleted_at IS NULL AND trim(text,?)!=''"
+            params = [account, WHITESPACE]
+            if target is not None:
+                where += " AND chat=?"
+                params.append(target)
+            return ("messages", "message_vectors", "message", "snapshot", where, params)
         return (
             "project_memories",
             "memory_vectors",
@@ -234,10 +232,27 @@ class SemanticIndex:
             "model_key": key,
         }
 
-    async def search(self, kind: str, account: str, target: str, query: str, *, limit=10) -> dict:
+    async def search(
+        self,
+        kind: str,
+        account: str,
+        target: str | None,
+        query: str,
+        *,
+        limit=10,
+        date_from=None,
+        date_to=None,
+    ) -> dict:
         key = await self.provider.model_key()
         query_vector = normalized((await self.provider.embed([query], key))[0])
         table, vectors, idcol, content, where, params = self._scope(kind, account, target)
+        if kind == "archive":
+            if date_from is not None:
+                where += " AND substr(date,1,10)>=?"
+                params.append(date_from)
+            if date_to is not None:
+                where += " AND substr(date,1,10)<=?"
+                params.append(date_to)
         object_id = "rowid" if kind == "archive" else "id"
         order = (
             "d.date DESC,CAST(d.mid AS INTEGER) DESC"
@@ -259,7 +274,11 @@ class SemanticIndex:
             vector = normalized(json.loads(row["vector"]), len(query_vector))
             score = sum(a * b for a, b in zip(query_vector, vector, strict=True))
             if kind == "archive":
-                item = {**json.loads(row["snapshot"]), "account_id": account, "chat_id": target}
+                item = {
+                    **json.loads(row["snapshot"]),
+                    "account_id": account,
+                    "chat_id": row["chat"],
+                }
             else:
                 item = {"memory_id": row["id"], "text": row["text"], "state": row["state"]}
             ranked.append({**item, "score": score})

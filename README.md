@@ -271,3 +271,24 @@ and [CONTRIBUTING.md](CONTRIBUTING.md). Release and registry steps are in
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
+
+### Local-first message retrieval
+
+Use `find_messages(account_id, query, chat_id=..., telegram="auto")` as the preferred message
+retrieval tool. It combines local lexical matches and semantic candidates, deduplicates by
+account/chat/message ID, and falls back to one bounded Telegram page when local results or
+coverage are insufficient. `telegram="never"` makes no Telegram reads; `"always"` verifies
+freshness. Optional `date_from`/`date_to` are inclusive UTC dates. `include_context=true` reads
+only the top result with two neighboring messages each side, unless local-only mode is selected.
+
+Inspect `partial`, `warnings`, `local_coverage`, `semantic_partial` and provenance. Semantic
+retrieval remains bounded to 2000 recent indexed messages in scope; lexical search covers the
+retained archive. Account-wide inventory is not certified complete, so automatic account-wide
+queries may also consult Telegram. Results are a bounded ranking, not a full export, and scores
+are not confidence. A Telegram cursor must be continued with the returned native `cursor_tool`
+(`search_messages` or `search_all_messages`), preserving the account/query/chat/date arguments.
+
+Fallback/context reads share the account's adaptive loading gate. Telegram failures, cooldowns
+or timeouts preserve local results with explicit warnings. No deleted content is returned and
+no source is automatically enabled, archived or reindexed by a retrieval request. Chat-restricted
+tokens must supply an allowed `chat_id`; account-wide retrieval is rejected before any reads.

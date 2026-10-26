@@ -25,8 +25,18 @@ bounded to the account, bot, chat, folder, and date range the user requested.
 - Follow `next_cursor` until it is absent, the requested limit is satisfied, or enough evidence is
   available for the requested answer. Do not describe a partial page as the complete history.
 - Use `list_folders` followed by `get_folder_messages` for requests scoped to a Telegram folder.
-- Use `get_chat_history` for chronological reading, `search_messages` for one chat, and
-  `search_all_messages` only when the request genuinely spans dialogs.
+- Prefer `find_messages` for message retrieval: local keyword/semantic search first, then bounded
+  Telegram fallback when coverage/results are insufficient. Supply `chat_id` for one chat; omit it
+  only when the user requests account-wide search. `telegram="always"` verifies freshness;
+  `telegram="never"` forbids Telegram reads, including optional context. Inspect `partial`,
+  `warnings`, coverage and `semantic_partial`; the semantic scan is bounded to 2000 recent vectors,
+  and account-wide dialog coverage is not certified locally. Cite IDs and distinguish sources.
+- `include_context=true` reads only the top result's live context (two neighbors each side),
+  unless Telegram reads are disabled. Fetch other context explicitly when needed.
+- Use `get_chat_history` for chronological reading. `search_messages` and `search_all_messages`
+  search Telegram directly; use the latter only for requests genuinely spanning dialogs.
+  For live pagination, pass the returned Telegram cursor to the indicated native `cursor_tool`;
+  it is not a `find_messages` cursor. Local-only broad retrieval is a bounded ranking, not an export.
 - For task extraction or summaries, cite chat titles, message dates, and message IDs so the user
   can verify the result. Do not reproduce unrelated private conversation content.
 

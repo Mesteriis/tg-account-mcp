@@ -53,6 +53,7 @@ const operationCopy = {
   list_folders: ['Папки', 'read', 'ph-list'],
   get_folder_messages: ['Сообщения папки', 'search', 'ph-magnifying-glass'],
   get_chat_history: ['Чтение истории', 'read', 'ph-file-text'],
+  find_messages: ['Поиск в архиве и Telegram', 'search', 'ph-magnifying-glass'],
   search_messages: ['Поиск', 'search', 'ph-magnifying-glass'],
   search_all_messages: ['Глобальный поиск', 'search', 'ph-magnifying-glass'],
   get_message: ['Сообщение', 'read', 'ph-file-text'],

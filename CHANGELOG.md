@@ -5,6 +5,8 @@ contain breaking changes documented here.
 
 ## [Unreleased]
 
+- Add scoped local-first message retrieval with keyword/semantic fusion, bounded Telegram
+  fallback, freshness/local-only modes, UTC date filters and explicit coverage/provenance.
 - Show server-sampled indexing/inflow rates, queue history and a net-drain ETA on the RAG page,
   with explicit warmup, paused, growing, stale and unavailable-account states.
 - Speed up local RAG queue selection, allow fractional indexing pauses, and embed posts up to
